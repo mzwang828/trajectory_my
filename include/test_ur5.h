@@ -109,7 +109,9 @@ public:
                        0.971862, -0.0515054, -0.229849,
                       -0.229849, -0.420735, -0.877583;
     goal_quaternion = goal_rotation;
+    goal_quaternion = goal_quaternion.inverse();
     goal_quaternion_ap = this->GetAP(goal_quaternion);
+    goal_quaternion_ap = goal_quaternion_ap.inverse();
     goal_translation << 0.578674, 0.522807, -0.200875;
   }
 
@@ -167,12 +169,12 @@ public:
     Eigen::Matrix3d end_rotation = end_pose.rotation();
     Eigen::Vector3d end_translation = end_pose.translation();
 
-    // Eigen::Quaterniond end_quaternion(end_rotation);
+    Eigen::Quaterniond end_quaternion(end_rotation);
     Eigen::Vector3d end_translation_error = end_translation - goal_translation;
 
-    // g(GetRows() - 4) = 0*
-    //     log((end_quaternion.inverse() * goal_quaternion).norm()) *
-    //     log((end_quaternion.inverse() * goal_quaternion_ap).norm());
+    g(GetRows() - 4) = 
+        log((goal_quaternion * end_quaternion).norm()) *
+        log((goal_quaternion_ap * end_quaternion).norm());
 
     g.segment(GetRows() - 3, 3) = end_translation_error;
 
