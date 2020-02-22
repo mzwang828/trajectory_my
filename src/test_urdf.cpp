@@ -6,6 +6,7 @@
 #include "pinocchio/algorithm/crba.hpp"
 #include "pinocchio/algorithm/frames.hpp"
 #include "pinocchio/algorithm/aba-derivatives.hpp"
+#include <Eigen/Sparse>
 
 
 #include <ctime>
@@ -72,21 +73,21 @@ int main(int argc, char ** argv)
 
   // derivative test
   // computeAllTerms(model, data, q, v);
-  Eigen::VectorXd tau(6);
-  q << 0, 0, 0, 0, 0, 0;
-  v << 1,1,1,1,1,1;
-  tau << 2,2,2,2,2,2;
-  computeABADerivatives(model, data, q, v, tau);
-  std::cout << "check derivative ddq_dq: " << data.ddq_dq<< "\n";
-  std::cout << "check derivative ddq_dv: " << data.ddq_dv << "\n";
-  std::cout << "check derivative minv: " << data.Minv << "\n";
-  std::cout << "----------\n";
-  v << 2,2,2,2,2,2;
-  tau << 2,2,2,2,2,2;
-  computeABADerivatives(model, data, q, v, tau);
-  std::cout << "check derivative ddq_dq: " << data.ddq_dq << "\n";
-  std::cout << "check derivative ddq_dv: " << data.ddq_dv << "\n";
-  std::cout << "check derivative minv: " << data.Minv << "\n";
+  // Eigen::VectorXd tau(6);
+  // q << 0, 0, 0, 0, 0, 0;
+  // v << 1,1,1,1,1,1;
+  // tau << 2,2,2,2,2,2;
+  // computeABADerivatives(model, data, q, v, tau);
+  // std::cout << "check derivative ddq_dq: " << data.ddq_dq<< "\n";
+  // std::cout << "check derivative ddq_dv: " << data.ddq_dv << "\n";
+  // std::cout << "check derivative minv: " << data.Minv << "\n";
+  // std::cout << "----------\n";
+  // v << 2,2,2,2,2,2;
+  // tau << 2,2,2,2,2,2;
+  // computeABADerivatives(model, data, q, v, tau);
+  // std::cout << "check derivative ddq_dq: " << data.ddq_dq << "\n";
+  // std::cout << "check derivative ddq_dv: " << data.ddq_dv << "\n";
+  // std::cout << "check derivative minv: " << data.Minv << "\n";
 
 
   /*
@@ -119,9 +120,16 @@ int main(int argc, char ** argv)
 */
 
   // eigen test
-  // Eigen::RowVectorXd a(6);
-  // a << 1, 2, 3, 4, 5, 6;
-  // std::cout << a << "\n";
-  // a.segment(1,3) << 0, 0, 0;
-  // std::cout << a << "\n";
+  Eigen::MatrixXd Mat(3,3);
+  Eigen::VectorXd vec(3);
+  Eigen::SparseMatrix<double, Eigen::RowMajor> SpMat;
+  Mat << 1,0,0,2,1,0,0,0,1;
+  vec << 0,0,0;
+  std::cout << Mat << "\n";
+  SpMat = Mat.sparseView();
+  SpMat.coeffRef(0,0) = 0;
+  SpMat.coeffRef(0,1) = 0;
+  SpMat.coeffRef(0,2) = 0;
+  SpMat.prune(0,0);
+  std::cout << SpMat << "\n";
 }
