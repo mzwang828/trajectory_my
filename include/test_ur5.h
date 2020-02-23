@@ -151,7 +151,7 @@ public:
   // // Constant values should always be put into GetBounds(), not GetValues().
   // // For inequality constraints (<,>), use Bounds(x, inf) or Bounds(-inf, x).
   VecBound GetBounds() const override {
-    VecBound bounds(GetRows());;
+    VecBound bounds(GetRows());
     for (int i = 0; i < GetRows(); i++)
       bounds.at(i) = Bounds(0.0, 0.0);
     return bounds;
@@ -224,9 +224,9 @@ public:
     goal_rotation << -0.0515054, 0.90572, -0.420735, 0.971862, -0.0515054,
         -0.229849, -0.229849, -0.420735, -0.877583;
     goal_quaternion = goal_rotation;
-    goal_quaternion = goal_quaternion.inverse();
+    // goal_quaternion = goal_quaternion.inverse();
     goal_quaternion_ap = this->GetAP(goal_quaternion);
-    goal_quaternion_ap = goal_quaternion_ap.inverse();
+    // goal_quaternion_ap = goal_quaternion_ap.inverse();
     goal_translation << 0.578674, 0.522807, -0.200875;
   }
 
@@ -235,13 +235,27 @@ public:
     return quater_ap;
   }
 
+
+  double quaternion_dist(Eigen::Quaterniond q1, Eigen::Quaterniond q2) const {
+    Eigen::Quaterniond q = q1.inverse() * q2;
+    if (abs(q.w()) < 1.0){
+      double a = acos(q.w());
+      double sina = sin(a);
+      if (abs(sina) >= 0.05){
+        double c = a/sina;
+        q.vec()[0] *= c;
+        q.vec()[1] *= c;
+        q.vec()[2] *= c;
+      }
+    }
+    return q.vec().norm();
+  }
+
   VectorXd GetValues() const override {
     pinocchio::Data data(model);
     pinocchio::Data data_next(model);
     VectorXd g(GetRows());
     VectorXd pos = GetVariables()->GetComponent("position")->GetValues();
-    VectorXd vel = GetVariables()->GetComponent("velocity")->GetValues();
-    VectorXd torque = GetVariables()->GetComponent("torque")->GetValues();
 
     // set constraint for final pose
     // calculate final pose error
@@ -256,9 +270,8 @@ public:
     Eigen::Quaterniond end_quaternion(end_rotation);
     Eigen::Vector3d end_translation_error = end_translation - goal_translation;
 
-    g(0) = log((goal_quaternion * end_quaternion).norm()) *
-           log((goal_quaternion_ap * end_quaternion).norm());
-
+    g(0) = this->quaternion_dist(goal_quaternion_ap, end_quaternion) *
+           this->quaternion_dist(goal_quaternion, end_quaternion);
     g.segment(1, 3) = end_translation_error;
 
     return g;
@@ -266,8 +279,8 @@ public:
 
   VecBound GetBounds() const override {
     VecBound bounds(GetRows());
-    ;
-    for (int i = 0; i < GetRows(); i++)
+    bounds.at(0) = Bounds(-0.005, 0.005);
+    for (int i = 1; i < GetRows(); i++)
       bounds.at(i) = Bounds(0.0, 0.0);
     return bounds;
   }

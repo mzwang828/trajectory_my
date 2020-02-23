@@ -8,13 +8,36 @@
 #include "pinocchio/algorithm/aba-derivatives.hpp"
 #include <Eigen/Sparse>
 
-
+#include <math.h>
 #include <ctime>
 #include <iostream>
 // PINOCCHIO_MODEL_DIR is defined by the CMake but you can define your own directory here.
 #ifndef PINOCCHIO_MODEL_DIR
   #define PINOCCHIO_MODEL_DIR "/home/mzwang/catkin_ws/src/trajectory_my/model"
 #endif
+
+
+double quaternion_disp(Eigen::Quaterniond q1, Eigen::Quaterniond q2){
+  Eigen::Quaterniond q = q1.inverse() * q2;
+  // std::vector<double> rot_vec(3);
+  // rot_vec[0] = q.vec()[0];
+  // rot_vec[1] = q.vec()[1];
+  // rot_vec[2] = q.vec()[2];
+  if (abs(q.w()) < 1.0){
+    double a = acos(q.w());
+    double sina = sin(a);
+    if (abs(sina) >= 0.05){
+      double c = a/sina;
+      q.vec()[0] *= c;
+      q.vec()[1] *= c;
+      q.vec()[2] *= c;
+    }
+  }
+  return q.vec().norm();
+}
+
+
+
 int main(int argc, char ** argv)
 {
   using namespace pinocchio;
@@ -32,6 +55,7 @@ int main(int argc, char ** argv)
   // Sample a random configuration
   Eigen::VectorXd q = randomConfiguration(model);
   Eigen::VectorXd v(6);
+  pinocchio::FrameIndex frameID = model.getFrameId("ee_fixed_joint");
   /*
   std::cout << "q: " << q.transpose() << std::endl;
   // Perform the forward kinematics over the kinematic tree
@@ -44,7 +68,6 @@ int main(int argc, char ** argv)
   */
 
   // kinematics test
-  // pinocchio::FrameIndex frameID = model.getFrameId("ee_fixed_joint");
   // q << 0, 0, 0, 0, 0, 0;
   // forwardKinematics(model,data,q);
   // pinocchio::updateFramePlacement(model, data, frameID);
@@ -57,20 +80,25 @@ int main(int argc, char ** argv)
   // std::cout << "initial pose quaternion: " << ini_quater.w() << "\n";
   // std::cout << "initial pose quaternion: " << ini_quater.vec().transpose() << "\n";
 
-  // q << 0.5,0,0.5,0,0.5,0;
-  // q << 0.58, 0.92, -1.06, -0.67, 1.39, 0.16;
-  // forwardKinematics(model,data,q);
-  // pinocchio::updateFramePlacement(model, data, frameID);
-  // pinocchio::GeometryData::SE3 final_pose = data.oMf[frameID];
-  // Eigen::Quaterniond end_quater(final_pose.rotation());
+  q << 0.5,0,0.5,0,0.5,0;
+  q << 0.58, 0.92, -1.06, -0.67, 1.39, 0.16;
+  forwardKinematics(model,data,q);
+  pinocchio::updateFramePlacement(model, data, frameID);
+  pinocchio::GeometryData::SE3 final_pose = data.oMf[frameID];
+  Eigen::Quaterniond end_quater(final_pose.rotation());
   // std::cout << "q: " << q.transpose() << std::endl;
   // std::cout << "final pose: \n" << final_pose << "\n";
   // std::cout << "final pose quaternion: " << end_quater.w() << "\n";
   // std::cout << "final pose quaternion: " << end_quater.vec().transpose() << "\n";
   // std::cout << "inverse w: " << end_quater.inverse().w() << "\n";
   // std::cout << "inverse vec: " << end_quater.inverse().vec().transpose() << "\n";
-  // std::cout << "quaternion multi w: " << log((end_quater * end_quater.inverse()).norm()) << "\n";
-
+  // std::cout << "quaternion multi w: " << end_quater.dot(end_quater) << "\n";
+  // std::cout << "quaternion multi w: " << end_quater.dot(end_quater.inverse()) << "\n";
+  double test_d = quaternion_disp(end_quater, end_quater);
+  std::cout << "check: " << test_d << "\n";
+  Eigen::Quaterniond quater_ap(-end_quater.w(), -end_quater.x(), -end_quater.y(), -end_quater.z());
+  test_d = quaternion_disp(end_quater, quater_ap);
+  std::cout << "check: " << test_d << "\n";
   // derivative test
   // computeAllTerms(model, data, q, v);
   // Eigen::VectorXd tau(6);
@@ -120,16 +148,17 @@ int main(int argc, char ** argv)
 */
 
   // eigen test
-  Eigen::MatrixXd Mat(3,3);
-  Eigen::VectorXd vec(3);
-  Eigen::SparseMatrix<double, Eigen::RowMajor> SpMat;
-  Mat << 1,0,0,2,1,0,0,0,1;
-  vec << 0,0,0;
-  std::cout << Mat << "\n";
-  SpMat = Mat.sparseView();
-  SpMat.coeffRef(0,0) = 0;
-  SpMat.coeffRef(0,1) = 0;
-  SpMat.coeffRef(0,2) = 0;
-  SpMat.prune(0,0);
-  std::cout << SpMat << "\n";
+  // Eigen::MatrixXd Mat(3,3);
+  // Eigen::VectorXd vec(3);
+  // Eigen::SparseMatrix<double, Eigen::RowMajor> SpMat;
+  // Mat << 1,0,0,2,1,0,0,0,1;
+  // vec << 0,0,0;
+  // std::cout << Mat << "\n";
+  // SpMat = Mat.sparseView();
+  // SpMat.coeffRef(0,0) = 0;
+  // SpMat.coeffRef(0,1) = 0;
+  // SpMat.coeffRef(0,2) = 0;
+  // SpMat.prune(0,0);
+  // std::cout << SpMat << "\n";
 }
+
