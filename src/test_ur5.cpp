@@ -10,7 +10,7 @@ using namespace ifopt;
 int main()
 {
   int ndof = 6;         // number of freedom
-  int nsteps = 20;    // number of steps or (knot points - 1)
+  int nsteps = 10;    // number of steps or (knot points - 1)
   double tstep = 0.05; // length of each step
 
   Problem nlp;
@@ -20,7 +20,7 @@ int main()
   nlp.AddVariableSet  (std::make_shared<ExVariables>(ndof*nsteps, "torque"));
 
   nlp.AddConstraintSet(std::make_shared<ExConstraint>(2*ndof*(nsteps-1)));
-  nlp.AddConstraintSet(std::make_shared<EndEffectorConstraint>(4));
+  // nlp.AddConstraintSet(std::make_shared<EndEffectorConstraint>(4));
   nlp.AddCostSet      (std::make_shared<ExCost>());
   nlp.PrintCurrent();
 

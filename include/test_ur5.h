@@ -64,12 +64,12 @@ public:
       // for (int i = GetRows() - 6; i < GetRows(); i++)
       //   bounds.at(i) = Bounds(0, 0);
 
-      // bounds.at(GetRows() - 6) = Bounds(0.5, 0.5);
-      // bounds.at(GetRows() - 5) = Bounds(0.0, 0.0);
-      // bounds.at(GetRows() - 4) = Bounds(0.5, 0.5);
-      // bounds.at(GetRows() - 3) = Bounds(0.0, 0.0);
-      // bounds.at(GetRows() - 2) = Bounds(0.5, 0.5);
-      // bounds.at(GetRows() - 1) = Bounds(0.0, 0.0);
+      bounds.at(GetRows() - 6) = Bounds(0.5, 0.5);
+      bounds.at(GetRows() - 5) = Bounds(0.0, 0.0);
+      bounds.at(GetRows() - 4) = Bounds(0.5, 0.5);
+      bounds.at(GetRows() - 3) = Bounds(0.0, 0.0);
+      bounds.at(GetRows() - 2) = Bounds(0.5, 0.5);
+      bounds.at(GetRows() - 1) = Bounds(0.0, 0.0);
       
     } else if (GetName() == "velocity") {
       for (int i = 0; i < GetRows(); i++)
@@ -97,7 +97,7 @@ public:
       PINOCCHIO_MODEL_DIR + std::string("/ur5_robot.urdf");
   pinocchio::Model model;
   int ndof = 6;        // number of freedom
-  int nsteps = 20;     // number of steps or (knot points - 1)
+  int nsteps = 10;     // number of steps or (knot points - 1)
   double tstep = 0.05; // length of each step
 
   ExConstraint(int n) : ExConstraint(n, "constraint1") {}
@@ -159,7 +159,6 @@ public:
 
   void FillJacobianBlock(std::string var_set,
                          Jacobian &jac_block) const override {
-                           /*
     pinocchio::Data data_next(model);
     VectorXd pos = GetVariables()->GetComponent("position")->GetValues();
     VectorXd vel = GetVariables()->GetComponent("velocity")->GetValues();
@@ -172,36 +171,51 @@ public:
                                        torque.segment(ndof * (i + 1), ndof));
 
       // construct the triplet list for 3 sparse matrix (the 3 Jacobian)
-      for (int j = 0; j < ndof; j++){
-        // Triplet for position
-        triplet_pos.push_back(T(ndof * i + j, ndof*i+j, 1)); // dq_dq_k
-        triplet_pos.push_back(T(ndof * i + j, ndof*i+j+ndof , -1)); //dq_dq_k+1
-        for (int k = 0; k < ndof; k++){
-          triplet_pos.push_back(T(ndof * (nsteps -1 + i) + j, ndof*i+ndof + j +k , - data_next.ddq_dq(j,k))); //ddq_dq_k+1
+      for (int j = 0; j < ndof; j++) {
+        if (var_set == "position") {
+          // Triplet for position
+          triplet_pos.push_back(T(ndof * i + j, ndof * i + j, 1)); // dq_dq_k
+          triplet_pos.push_back(
+              T(ndof * i + j, ndof * i + j + ndof, -1)); // dq_dq_k+1
+          for (int k = 0; k < ndof; k++) {
+            triplet_pos.push_back(T(ndof * (nsteps - 1 + i) + j,
+                                    ndof * i + ndof + k,
+                                    -data_next.ddq_dq(j, k))); // ddq_dq_k+1
+          }
         }
-        // Triplet for velocity
-        triplet_vel.push_back(T(ndof * i + j, ndof*i+j+ndof, tstep)); // dq_dv_k+1
-        triplet_vel.push_back(T(ndof * (nsteps -1 + i) + j, ndof*i+j, -1.0/tstep)); // ddq_dv_k
-        for (int k = 0; k < ndof; k++){
-          triplet_vel.push_back(T(ndof * (nsteps -1 + i) + j, ndof*i+ndof + j +k , (1.0/tstep) - data_next.ddq_dv(j,k))); //ddq_dq_k+1
+        if (var_set == "velocity") {
+          // Triplet for velocity
+          triplet_vel.push_back(
+              T(ndof * i + j, ndof * i + j + ndof, tstep)); // dq_dv_k+1
+          triplet_vel.push_back(T(ndof * (nsteps - 1 + i) + j, ndof * i + j,
+                                  -1.0 / tstep)); // ddq_dv_k
+          for (int k = 0; k < ndof; k++) {
+            triplet_vel.push_back(
+                T(ndof * (nsteps - 1 + i) + j, ndof * i + ndof + k,
+                  (1.0 / tstep) - data_next.ddq_dv(j, k))); // ddq_dq_k+1
+          }
         }
-        // Triplet for torque
-        for (int k = 0; k < ndof; k++){
-        triplet_tau.push_back(T(ndof * (nsteps -1 + i) + j, ndof*i+ndof + j +k , - data_next.Minv(j,k))); // ddq_dt_k+1
+        if (var_set == "torque") {
+          // Triplet for torque
+          for (int k = 0; k < ndof; k++) {
+            triplet_tau.push_back(T(ndof * (nsteps - 1 + i) + j,
+                                    ndof * i + ndof + k,
+                                    -data_next.Minv(j, k))); // ddq_dt_k+1
+          }
         }
-      }
-
-      if (var_set == "position") {
-        jac_block.setFromTriplets(triplet_pos.begin(), triplet_pos.end());
-      }
-      if (var_set == "velocity") {
-        jac_block.setFromTriplets(triplet_vel.begin(), triplet_pos.end());
-      }
-      if (var_set == "torque") {
-        jac_block.setFromTriplets(triplet_tau.begin(), triplet_pos.end());
       }
     }
-  */}
+
+    if (var_set == "position") {
+      jac_block.setFromTriplets(triplet_pos.begin(), triplet_pos.end());
+    }
+    if (var_set == "velocity") {
+      jac_block.setFromTriplets(triplet_vel.begin(), triplet_vel.end());
+    }
+    if (var_set == "torque") {
+      jac_block.setFromTriplets(triplet_tau.begin(), triplet_tau.end());
+    }
+  }
   
 };
 
@@ -211,7 +225,7 @@ public:
       PINOCCHIO_MODEL_DIR + std::string("/ur5_robot.urdf");
   pinocchio::Model model;
   int ndof = 6;                  // number of freedom
-  int nsteps = 20;               // number of steps or (knot points - 1)
+  int nsteps = 10;               // number of steps or (knot points - 1)
   double tstep = 0.05;           // length of each step
   Eigen::Matrix3d goal_rotation; // goal rotation matrix
   Eigen::Quaterniond goal_quaternion, goal_quaternion_ap; // goal quaternion
@@ -279,7 +293,7 @@ public:
 
   VecBound GetBounds() const override {
     VecBound bounds(GetRows());
-    bounds.at(0) = Bounds(-0.005, 0.005);
+    bounds.at(0) = Bounds(-0.05, 0.05);
     for (int i = 1; i < GetRows(); i++)
       bounds.at(i) = Bounds(0.0, 0.0);
     return bounds;
@@ -312,7 +326,6 @@ public:
   };
 
   void FillJacobianBlock(std::string var_set, Jacobian &jac) const override {
-    /*
     if (var_set == "torque"){
       VectorXd torque = GetVariables()->GetComponent("torque")->GetValues();
       int n = GetVariables()->GetComponent("torque")->GetRows();
@@ -324,7 +337,7 @@ public:
       triplet_cost.push_back(T(0,n-1,torque(n-1)));
       jac.setFromTriplets(triplet_cost.begin(), triplet_cost.end());
     }
-  */}
+  }
   
 };
 

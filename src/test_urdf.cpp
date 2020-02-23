@@ -80,25 +80,26 @@ int main(int argc, char ** argv)
   // std::cout << "initial pose quaternion: " << ini_quater.w() << "\n";
   // std::cout << "initial pose quaternion: " << ini_quater.vec().transpose() << "\n";
 
-  q << 0.5,0,0.5,0,0.5,0;
-  q << 0.58, 0.92, -1.06, -0.67, 1.39, 0.16;
+  // q << 0.5,0,0.5,0,0.5,0;
+  q << 0.49,0.14,0.69,-3.14,-0.03,2.82;
   forwardKinematics(model,data,q);
   pinocchio::updateFramePlacement(model, data, frameID);
   pinocchio::GeometryData::SE3 final_pose = data.oMf[frameID];
   Eigen::Quaterniond end_quater(final_pose.rotation());
   // std::cout << "q: " << q.transpose() << std::endl;
-  // std::cout << "final pose: \n" << final_pose << "\n";
+  std::cout << "final pose: \n" << final_pose << "\n";
   // std::cout << "final pose quaternion: " << end_quater.w() << "\n";
   // std::cout << "final pose quaternion: " << end_quater.vec().transpose() << "\n";
   // std::cout << "inverse w: " << end_quater.inverse().w() << "\n";
   // std::cout << "inverse vec: " << end_quater.inverse().vec().transpose() << "\n";
   // std::cout << "quaternion multi w: " << end_quater.dot(end_quater) << "\n";
   // std::cout << "quaternion multi w: " << end_quater.dot(end_quater.inverse()) << "\n";
-  double test_d = quaternion_disp(end_quater, end_quater);
-  std::cout << "check: " << test_d << "\n";
-  Eigen::Quaterniond quater_ap(-end_quater.w(), -end_quater.x(), -end_quater.y(), -end_quater.z());
-  test_d = quaternion_disp(end_quater, quater_ap);
-  std::cout << "check: " << test_d << "\n";
+  // double test_d = quaternion_disp(end_quater, end_quater);
+  // std::cout << "check: " << test_d << "\n";
+  // Eigen::Quaterniond quater_ap(-end_quater.w(), -end_quater.x(), -end_quater.y(), -end_quater.z());
+  // test_d = quaternion_disp(end_quater, quater_ap);
+  // std::cout << "check: " << test_d << "\n";
+
   // derivative test
   // computeAllTerms(model, data, q, v);
   // Eigen::VectorXd tau(6);
