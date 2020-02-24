@@ -34,7 +34,7 @@ public:
         xvar(i) = 0;
     } else if (name == "velocity") {
       for (int i = 0; i < n; i++)
-        xvar(i) = 0;
+        xvar(i) = 1;
     } else if (name == "torque") {
       for (int i = 0; i < n; i++)
         xvar(i) = 1;
@@ -73,7 +73,7 @@ public:
       
     } else if (GetName() == "velocity") {
       for (int i = 0; i < GetRows(); i++)
-        bounds.at(i) = NoBound;
+        bounds.at(i) = Bounds(-velocity_lim, velocity_lim);
       for (int i = 0; i < 6; i++)
         bounds.at(i) = Bounds(0, 0);
       for (int i = GetRows() - 6; i < GetRows(); i++)
@@ -88,6 +88,7 @@ public:
 private:
   Eigen::VectorXd xvar;
   double position_lim = 3.14;
+  double velocity_lim = 100;
   double torque_lim = 100;
 };
 
@@ -120,6 +121,12 @@ public:
       pinocchio::computeAllTerms(model, data_next,
                                  pos.segment(ndof * (i + 1), ndof),
                                  vel.segment(ndof * (i + 1), ndof));
+      pinocchio::computeABADerivatives(model, data_next,
+                                       pos.segment(ndof * (i + 1), ndof),
+                                       vel.segment(ndof * (i + 1), ndof),
+                                       torque.segment(ndof * (i + 1), ndof));
+      // Eigen::MatrixXd M = data_next.M;
+      // M.triangularView<Eigen::StrictlyLower>() = M.transpose().triangularView<Eigen::StrictlyLower>();
       // trapezoidal collocation. Minv needed but not correctly provided
       // by Pinocchio
       // g.segment(ndof * (2 * i), ndof) =
@@ -139,10 +146,15 @@ public:
           pos.segment(ndof * i, ndof) - pos.segment(ndof * (i + 1), ndof) +
           tstep * (vel.segment(ndof * (i + 1), ndof));
 
+      // g.segment(ndof * (nsteps - 1 + i), ndof) =
+      //     M * (vel.segment(ndof * (i + 1), ndof) -
+      //                    vel.segment(ndof * i, ndof)) +
+      //     tstep * (data_next.nle - torque.segment(ndof * (i + 1), ndof));
       g.segment(ndof * (nsteps - 1 + i), ndof) =
-          data_next.M * (vel.segment(ndof * (i + 1), ndof) -
+          1/tstep * (vel.segment(ndof * (i + 1), ndof) -
                          vel.segment(ndof * i, ndof)) +
-          tstep * (data_next.nle - torque.segment(ndof * (i + 1), ndof));
+          data_next.Minv * (data_next.nle - torque.segment(ndof * (i + 1), ndof));
+      
     }
 
     return g;
@@ -189,10 +201,13 @@ public:
               T(ndof * i + j, ndof * i + j + ndof, tstep)); // dq_dv_k+1
           triplet_vel.push_back(T(ndof * (nsteps - 1 + i) + j, ndof * i + j,
                                   -1.0 / tstep)); // ddq_dv_k
+          triplet_vel.push_back(T(ndof * (nsteps - 1 + i) + j,
+                                  ndof * i + j + ndof,
+                                  1.0 / tstep)); // ddq_dv_k+1
           for (int k = 0; k < ndof; k++) {
-            triplet_vel.push_back(
-                T(ndof * (nsteps - 1 + i) + j, ndof * i + ndof + k,
-                  (1.0 / tstep) - data_next.ddq_dv(j, k))); // ddq_dq_k+1
+            triplet_vel.push_back(T(ndof * (nsteps - 1 + i) + j,
+                                    ndof * i + ndof + k,
+                                    -data_next.ddq_dv(j, k))); // ddq_dv_k+1
           }
         }
         if (var_set == "torque") {

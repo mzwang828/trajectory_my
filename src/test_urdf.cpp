@@ -15,6 +15,7 @@
 #ifndef PINOCCHIO_MODEL_DIR
   #define PINOCCHIO_MODEL_DIR "/home/mzwang/catkin_ws/src/trajectory_my/model"
 #endif
+typedef Eigen::Triplet<double> T;
 
 
 double quaternion_disp(Eigen::Quaterniond q1, Eigen::Quaterniond q2){
@@ -81,13 +82,13 @@ int main(int argc, char ** argv)
   // std::cout << "initial pose quaternion: " << ini_quater.vec().transpose() << "\n";
 
   // q << 0.5,0,0.5,0,0.5,0;
-  q << 0.49,0.14,0.69,-3.14,-0.03,2.82;
-  forwardKinematics(model,data,q);
-  pinocchio::updateFramePlacement(model, data, frameID);
-  pinocchio::GeometryData::SE3 final_pose = data.oMf[frameID];
-  Eigen::Quaterniond end_quater(final_pose.rotation());
-  // std::cout << "q: " << q.transpose() << std::endl;
-  std::cout << "final pose: \n" << final_pose << "\n";
+  // q << 0.49,0.14,0.69,-3.14,-0.03,2.82;
+  // forwardKinematics(model,data,q);
+  // pinocchio::updateFramePlacement(model, data, frameID);
+  // pinocchio::GeometryData::SE3 final_pose = data.oMf[frameID];
+  // Eigen::Quaterniond end_quater(final_pose.rotation());
+  // // std::cout << "q: " << q.transpose() << std::endl;
+  // std::cout << "final pose: \n" << final_pose << "\n";
   // std::cout << "final pose quaternion: " << end_quater.w() << "\n";
   // std::cout << "final pose quaternion: " << end_quater.vec().transpose() << "\n";
   // std::cout << "inverse w: " << end_quater.inverse().w() << "\n";
@@ -100,20 +101,33 @@ int main(int argc, char ** argv)
   // test_d = quaternion_disp(end_quater, quater_ap);
   // std::cout << "check: " << test_d << "\n";
 
-  // derivative test
+  //derivative test
   // computeAllTerms(model, data, q, v);
-  // Eigen::VectorXd tau(6);
-  // q << 0, 0, 0, 0, 0, 0;
-  // v << 1,1,1,1,1,1;
-  // tau << 2,2,2,2,2,2;
-  // computeABADerivatives(model, data, q, v, tau);
+  Eigen::VectorXd tau(6);
+  q << 0.5, 0.2, 0.5, 0.2, 0.2, 0.3;
+  v << 0.1,0.1,0.1,0.1,0.1,0.1;
+  tau << 2,2,2,2,2,2;
+  computeAllTerms(model, data, q, v);
+  computeMinverse(model, data, q);
+  Eigen::MatrixXd M = data.M;
+  M.triangularView<Eigen::StrictlyLower>() = M.transpose().triangularView<Eigen::StrictlyLower>();
+  std::cout << "check m1: \n" << data.M << "\n";
+  std::cout << "check minv1 : \n" << data.Minv << "\n";
+  std::cout << "multiplication: \n " << M * data.Minv << "\n";
+  computeABADerivatives(model, data, q, v, tau);
+  // std::cout << "check if nle: " << data.nle << "\n";
   // std::cout << "check derivative ddq_dq: " << data.ddq_dq<< "\n";
   // std::cout << "check derivative ddq_dv: " << data.ddq_dv << "\n";
-  // std::cout << "check derivative minv: " << data.Minv << "\n";
-  // std::cout << "----------\n";
+  std::cout << "check m: \n" << data.M << "\n";
+  std::cout << "check derivative minv: \n" << data.Minv << "\n";
+  std::cout << "multiplication: \n " << M * data.Minv << "\n";
+  std::cout << "----------\n";
+  // q << 0.5,0,0.5,0,0.5,0;
   // v << 2,2,2,2,2,2;
   // tau << 2,2,2,2,2,2;
+  // computeAllTerms(model, data, q, v);
   // computeABADerivatives(model, data, q, v, tau);
+  // std::cout << "check if nle: " << data.nle << "\n";
   // std::cout << "check derivative ddq_dq: " << data.ddq_dq << "\n";
   // std::cout << "check derivative ddq_dv: " << data.ddq_dv << "\n";
   // std::cout << "check derivative minv: " << data.Minv << "\n";
@@ -151,7 +165,7 @@ int main(int argc, char ** argv)
   // eigen test
   // Eigen::MatrixXd Mat(3,3);
   // Eigen::VectorXd vec(3);
-  // Eigen::SparseMatrix<double, Eigen::RowMajor> SpMat;
+  // Eigen::SparseMatrix<double, Eigen::RowMajor> SpMat(3,3);
   // Mat << 1,0,0,2,1,0,0,0,1;
   // vec << 0,0,0;
   // std::cout << Mat << "\n";
@@ -160,6 +174,11 @@ int main(int argc, char ** argv)
   // SpMat.coeffRef(0,1) = 0;
   // SpMat.coeffRef(0,2) = 0;
   // SpMat.prune(0,0);
+  // std::vector<T> triplet;
+  // triplet.push_back(T(1,2,3));
+  // triplet.push_back(T(1,2,5));
+  // triplet.push_back(T(2,2,1));
+  // SpMat.setFromTriplets(triplet.begin(), triplet.end());  
   // std::cout << SpMat << "\n";
 }
 
