@@ -1,5 +1,6 @@
 #include "pinocchio/parsers/urdf.hpp"
 #include "pinocchio/algorithm/compute-all-terms.hpp"
+#include "pinocchio/algorithm/rnea.hpp"
 #include "pinocchio/algorithm/frames.hpp"
 #include "pinocchio/algorithm/joint-configuration.hpp"
 #include "pinocchio/algorithm/kinematics.hpp"
@@ -66,9 +67,9 @@ public:
 
       bounds.at(GetRows() - 6) = Bounds(0.5, 0.5);
       bounds.at(GetRows() - 5) = Bounds(0.0, 0.0);
-      bounds.at(GetRows() - 4) = Bounds(0.5, 0.5);
+      bounds.at(GetRows() - 4) = Bounds(0.0, 0.0);
       bounds.at(GetRows() - 3) = Bounds(0.0, 0.0);
-      bounds.at(GetRows() - 2) = Bounds(0.5, 0.5);
+      bounds.at(GetRows() - 2) = Bounds(0.0, 0.0);
       bounds.at(GetRows() - 1) = Bounds(0.0, 0.0);
       
     } else if (GetName() == "velocity") {
@@ -98,7 +99,7 @@ public:
       PINOCCHIO_MODEL_DIR + std::string("/ur5_robot.urdf");
   pinocchio::Model model;
   int ndof = 6;        // number of freedom
-  int nsteps = 10;     // number of steps or (knot points - 1)
+  int nsteps = 20;     // number of steps or (knot points - 1)
   double tstep = 0.05; // length of each step
 
   ExConstraint(int n) : ExConstraint(n, "constraint1") {}
@@ -116,19 +117,28 @@ public:
 
     // set contraint for each knot point
     for (int i = 0; i < nsteps - 1; i++) {
-      pinocchio::computeAllTerms(model, data, pos.segment(ndof * i, ndof),
-                                 vel.segment(ndof * i, ndof));
-      pinocchio::computeAllTerms(model, data_next,
-                                 pos.segment(ndof * (i + 1), ndof),
-                                 vel.segment(ndof * (i + 1), ndof));
-      pinocchio::computeABADerivatives(model, data_next,
-                                       pos.segment(ndof * (i + 1), ndof),
-                                       vel.segment(ndof * (i + 1), ndof),
-                                       torque.segment(ndof * (i + 1), ndof));
-      // Eigen::MatrixXd M = data_next.M;
-      // M.triangularView<Eigen::StrictlyLower>() = M.transpose().triangularView<Eigen::StrictlyLower>();
-      // trapezoidal collocation. Minv needed but not correctly provided
-      // by Pinocchio
+      // pinocchio::computeAllTerms(model, data, pos.segment(ndof * i, ndof),
+      //                            vel.segment(ndof * i, ndof));
+      // pinocchio::computeAllTerms(model, data_next,
+      //                            pos.segment(ndof * (i + 1), ndof),
+      //                            vel.segment(ndof * (i + 1), ndof));
+
+      pinocchio::nonLinearEffects(model, data_next,
+                                  pos.segment(ndof * (i + 1), ndof),
+                                  vel.segment(ndof * (i + 1), ndof));
+      pinocchio::computeMinverse(model, data_next,
+                                 pos.segment(ndof * (i + 1), ndof));
+      Eigen::MatrixXd Minv = data_next.Minv;
+      Minv.triangularView<Eigen::StrictlyLower>() =
+          Minv.transpose().triangularView<Eigen::StrictlyLower>();
+
+      // pinocchio::computeABADerivatives(model, data_next,
+      //                                  pos.segment(ndof * (i + 1), ndof),
+      //                                  vel.segment(ndof * (i + 1), ndof),
+      //                                  torque.segment(ndof * (i + 1), ndof));
+
+
+      // trapezoidal collocation
       // g.segment(ndof * (2 * i), ndof) =
       //     pos.segment(ndof * i, ndof) - pos.segment(ndof * (i + 1), ndof) +
       //     0.5 * tstep *
@@ -146,15 +156,10 @@ public:
           pos.segment(ndof * i, ndof) - pos.segment(ndof * (i + 1), ndof) +
           tstep * (vel.segment(ndof * (i + 1), ndof));
 
-      // g.segment(ndof * (nsteps - 1 + i), ndof) =
-      //     M * (vel.segment(ndof * (i + 1), ndof) -
-      //                    vel.segment(ndof * i, ndof)) +
-      //     tstep * (data_next.nle - torque.segment(ndof * (i + 1), ndof));
       g.segment(ndof * (nsteps - 1 + i), ndof) =
           1/tstep * (vel.segment(ndof * (i + 1), ndof) -
                          vel.segment(ndof * i, ndof)) +
-          data_next.Minv * (data_next.nle - torque.segment(ndof * (i + 1), ndof));
-      
+          Minv * (data_next.nle - torque.segment(ndof * (i + 1), ndof));
     }
 
     return g;
@@ -299,19 +304,19 @@ public:
     Eigen::Quaterniond end_quaternion(end_rotation);
     Eigen::Vector3d end_translation_error = end_translation - goal_translation;
 
-    g(0) = this->quaternion_dist(goal_quaternion_ap, end_quaternion) *
-           this->quaternion_dist(goal_quaternion, end_quaternion);
-    g.segment(1, 3) = end_translation_error;
+    g.segment(0, 3) = end_translation_error;
+    // g(3) = this->quaternion_dist(goal_quaternion_ap, end_quaternion) *
+    //        this->quaternion_dist(goal_quaternion, end_quaternion);
 
     return g;
   }
 
   VecBound GetBounds() const override {
     VecBound bounds(GetRows());
-    bounds.at(0) = Bounds(-0.05, 0.05);
-    for (int i = 1; i < GetRows(); i++)
+    for (int i = 0; i < GetRows(); i++)
       bounds.at(i) = Bounds(0.0, 0.0);
     return bounds;
+    //bounds.at(3) = Bounds(-0.05, 0.05);
   }
 
   void FillJacobianBlock(std::string var_set,
@@ -329,7 +334,7 @@ public:
     VectorXd torque = GetVariables()->GetComponent("torque")->GetValues();
     int n = GetVariables()->GetComponent("torque")->GetRows();
     Eigen::VectorXd vec(n);
-    for (int i; i < n; i++) {
+    for (int i = 0; i < n; i++) {
       vec(i) = 1;
     }
     vec(0) = 0.5;

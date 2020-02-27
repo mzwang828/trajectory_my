@@ -3,7 +3,7 @@ project(trajectory_my)
 
 ## Compile as C++11, supported in ROS Kinetic and newer
 add_compile_options(-std=c++11)
-add_definitions("-DBOOST_MPL_LIMIT_LIST_SIZE=30")
+# add_definitions("-DBOOST_MPL_LIMIT_LIST_SIZE=30")
 
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
@@ -140,7 +140,6 @@ ${PINOCCHIO_INCLUDE_DIRS}
 ## With catkin_make all packages are built within a single CMake context
 ## The recommended prefix ensures that target names across packages don't collide
 add_executable(test_urdf src/test_urdf.cpp)
-add_executable(test_ur5 src/test_ur5.cpp)
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
@@ -151,26 +150,28 @@ add_executable(test_ur5 src/test_ur5.cpp)
 ## Add cmake target dependencies of the executable
 ## same as for the library above
 add_dependencies(test_urdf ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-add_dependencies(test_ur5 ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+
 
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(test_urdf
   ${Boost_LIBRARIES}
   ${catkin_LIBRARIES}
-  #${PINOCCHIO_LIBRARIES}
-)
-
-target_link_libraries(test_ur5
-  ${Boost_LIBRARIES}
-  ${catkin_LIBRARIES}
-  #${PINOCCHIO_LIBRARIES}
 )
 
 link_directories(${PINOCCHIO_LIBRARY_DIRS})
 
 target_compile_definitions(test_urdf PRIVATE ${PINOCCHIO_CFLAGS_OTHER})
-target_compile_definitions(test_ur5 PRIVATE ${PINOCCHIO_CFLAGS_OTHER})
+
+## ur5 test
+# add_executable(test_ur5 src/test_ur5.cpp)
+# add_dependencies(test_ur5 ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+# target_link_libraries(test_ur5
+#   ${Boost_LIBRARIES}
+#   ${catkin_LIBRARIES}
+#   #${PINOCCHIO_LIBRARIES}
+# )
+# target_compile_definitions(test_ur5 PRIVATE ${PINOCCHIO_CFLAGS_OTHER})
 
 #############
 ## Install ##

@@ -1,4 +1,6 @@
 #include "pinocchio/parsers/urdf.hpp"
+#include "pinocchio/parsers/srdf.hpp"
+
 #include "pinocchio/algorithm/joint-configuration.hpp"
 #include "pinocchio/algorithm/kinematics.hpp"
 #include "pinocchio/algorithm/compute-all-terms.hpp"
@@ -6,6 +8,10 @@
 #include "pinocchio/algorithm/crba.hpp"
 #include "pinocchio/algorithm/frames.hpp"
 #include "pinocchio/algorithm/aba-derivatives.hpp"
+#include "pinocchio/algorithm/geometry.hpp"
+
+#include "pinocchio/multibody/data.hpp"
+
 #include <Eigen/Sparse>
 
 #include <math.h>
@@ -52,6 +58,15 @@ int main(int argc, char ** argv)
   
   // Create data required by the algorithms
   Data data(model);
+
+  // geometory model
+  GeometryModel geom_model;
+  pinocchio::urdf::buildGeom(model, urdf_filename, pinocchio::COLLISION, geom_model, PINOCCHIO_MODEL_DIR);
+
+  // Add all possible collision pairs and remove the ones collected in the SRDF file
+  geom_model.addAllCollisionPairs();
+
+  GeometryData geom_data(geom_model);
   
   // Sample a random configuration
   Eigen::VectorXd q = randomConfiguration(model);
@@ -82,7 +97,7 @@ int main(int argc, char ** argv)
   // std::cout << "initial pose quaternion: " << ini_quater.vec().transpose() << "\n";
 
   // q << 0.5,0,0.5,0,0.5,0;
-  // q << 0.49,0.14,0.69,-3.14,-0.03,2.82;
+  // q << 0.49,0.88,-0.92,-1.72,0.03,1.86;
   // forwardKinematics(model,data,q);
   // pinocchio::updateFramePlacement(model, data, frameID);
   // pinocchio::GeometryData::SE3 final_pose = data.oMf[frameID];
@@ -103,25 +118,26 @@ int main(int argc, char ** argv)
 
   //derivative test
   // computeAllTerms(model, data, q, v);
-  Eigen::VectorXd tau(6);
-  q << 0.5, 0.2, 0.5, 0.2, 0.2, 0.3;
-  v << 0.1,0.1,0.1,0.1,0.1,0.1;
-  tau << 2,2,2,2,2,2;
-  computeAllTerms(model, data, q, v);
-  computeMinverse(model, data, q);
-  Eigen::MatrixXd M = data.M;
-  M.triangularView<Eigen::StrictlyLower>() = M.transpose().triangularView<Eigen::StrictlyLower>();
-  std::cout << "check m1: \n" << data.M << "\n";
-  std::cout << "check minv1 : \n" << data.Minv << "\n";
-  std::cout << "multiplication: \n " << M * data.Minv << "\n";
-  computeABADerivatives(model, data, q, v, tau);
+  // Eigen::VectorXd tau(6);
+  // q << 0.5, 0.2, 0.5, 0.2, 0.2, 0.3;
+  // v << 0.1,0.1,0.1,0.1,0.1,0.1;
+  // tau << 2,2,2,2,2,2;
+  // computeMinverse(model, data, q);
+  // Eigen::MatrixXd M = data.M;
+  // Eigen::MatrixXd Minv = data.Minv;
+  // M.triangularView<Eigen::StrictlyLower>() = M.transpose().triangularView<Eigen::StrictlyLower>();
+  // Minv.triangularView<Eigen::StrictlyLower>() = Minv.transpose().triangularView<Eigen::StrictlyLower>();
+  // std::cout << "check m1: \n" << M << "\n";
+  // std::cout << "check minv1 : \n" << Minv << "\n";
+  // std::cout << "multiplication: \n " << M * Minv << "\n";
+  // computeABADerivatives(model, data, q, v, tau);
   // std::cout << "check if nle: " << data.nle << "\n";
   // std::cout << "check derivative ddq_dq: " << data.ddq_dq<< "\n";
   // std::cout << "check derivative ddq_dv: " << data.ddq_dv << "\n";
-  std::cout << "check m: \n" << data.M << "\n";
-  std::cout << "check derivative minv: \n" << data.Minv << "\n";
-  std::cout << "multiplication: \n " << M * data.Minv << "\n";
-  std::cout << "----------\n";
+  // std::cout << "check m: \n" << data.M << "\n";
+  // std::cout << "check derivative minv: \n" << data.Minv << "\n";
+  // std::cout << "multiplication: \n " << M * data.Minv << "\n";
+  // std::cout << "----------\n";
   // q << 0.5,0,0.5,0,0.5,0;
   // v << 2,2,2,2,2,2;
   // tau << 2,2,2,2,2,2;
@@ -165,7 +181,7 @@ int main(int argc, char ** argv)
   // eigen test
   // Eigen::MatrixXd Mat(3,3);
   // Eigen::VectorXd vec(3);
-  // Eigen::SparseMatrix<double, Eigen::RowMajor> SpMat(3,3);
+  // Eigen::SparseMatrix<double, Eigen::RowMajor> SpMat(3,4);
   // Mat << 1,0,0,2,1,0,0,0,1;
   // vec << 0,0,0;
   // std::cout << Mat << "\n";
@@ -180,5 +196,6 @@ int main(int argc, char ** argv)
   // triplet.push_back(T(2,2,1));
   // SpMat.setFromTriplets(triplet.begin(), triplet.end());  
   // std::cout << SpMat << "\n";
+  // std::cout <<  SpMat.cols() << "\n";
 }
 
