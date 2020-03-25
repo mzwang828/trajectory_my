@@ -18,6 +18,7 @@ urdf
 find_package(Boost REQUIRED COMPONENTS system)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(PINOCCHIO pinocchio REQUIRED)
+pkg_search_module(PKG_HPP_FCL REQUIRED hpp-fcl)
 
 ## Uncomment this if the package has a setup.py. This macro ensures
 ## modules and global scripts declared therein get installed
@@ -122,6 +123,7 @@ include
 ${Boost_INCLUDE_DIRS}
 ${catkin_INCLUDE_DIRS}
 ${PINOCCHIO_INCLUDE_DIRS}
+${PKG_HPP_FCL_INCLUDE_DIRS}
 )
 
 # message(STATUS "pinosship path" ${PINOCCHIO_LIBRARY_DIRS})
@@ -157,13 +159,14 @@ add_dependencies(test_urdf ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED
 target_link_libraries(test_urdf
   ${Boost_LIBRARIES}
   ${catkin_LIBRARIES}
+  ${PKG_HPP_FCL_LDFLAGS}
 )
 
 link_directories(${PINOCCHIO_LIBRARY_DIRS})
 
-target_compile_definitions(test_urdf PRIVATE ${PINOCCHIO_CFLAGS_OTHER})
+target_compile_definitions(test_urdf PUBLIC ${PINOCCHIO_CFLAGS_OTHER})
 
-## ur5 test
+# ur5 test
 # add_executable(test_ur5 src/test_ur5.cpp)
 # add_dependencies(test_ur5 ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 # target_link_libraries(test_ur5
@@ -172,6 +175,17 @@ target_compile_definitions(test_urdf PRIVATE ${PINOCCHIO_CFLAGS_OTHER})
 #   #${PINOCCHIO_LIBRARIES}
 # )
 # target_compile_definitions(test_ur5 PRIVATE ${PINOCCHIO_CFLAGS_OTHER})
+
+# pusher test
+add_executable(test_pusher src/test_pusher.cpp)
+add_dependencies(test_pusher ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+target_link_libraries(test_pusher
+  ${Boost_LIBRARIES}
+  ${catkin_LIBRARIES}
+  ${PKG_HPP_FCL_LDFLAGS}
+  yaml-cpp
+)
+target_compile_definitions(test_pusher PRIVATE ${PINOCCHIO_CFLAGS_OTHER})
 
 #############
 ## Install ##

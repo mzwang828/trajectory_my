@@ -1,0 +1,10 @@
+<?xml version="1.0" ?>
+<robot name="pusher">
+    <disable_collisions link1="base" link2="table" reason="Never" />
+    <disable_collisions link1="base" link2="pusher" reason="Never" />   
+    <disable_collisions link1="base" link2="tip" reason="Never" />
+    <disable_collisions link1="table" link2="pusher" reason="Never" />
+    <disable_collisions link1="table" link2="tip" reason="Never" />
+    <disable_collisions link1="pusher" link2="tip" reason="Never" />   
+</robot>
+
