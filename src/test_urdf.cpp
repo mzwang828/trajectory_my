@@ -227,16 +227,27 @@ int main(int argc, char ** argv)
   std::cout << "contact jacobian: " << w_J_contact << "\n";
   std::cout << "object jacobian: " << w_J_object << "\n";
 
+  // all collision pairs
   // for(size_t k = 0; k < geom_model.collisionPairs.size(); ++k)
   // {
   //   const CollisionPair & cp = geom_model.collisionPairs[k];
   //   const hpp::fcl::CollisionResult & cr = geom_data.collisionResults[k];
   //   const hpp::fcl::DistanceResult & dr = geom_data.distanceResults[k];
       
-  //   std::cout << "collision pair: " << cp.first << " , " << cp.second << " - collision: ";
+  //   std::cout << "collision pair: " << geom_model.geometryObjects[cp.first].name << " , " << geom_model.geometryObjects[cp.second].name << " - collision: ";
   //   std::cout << (cr.isCollision() ? "yes" : "no");
   //   std::cout << " - distance: " << dr.min_distance << std::endl;
   // }
+
+  // check body
+  std::cout << "body number: " << model.nbodies << "\n";
+  std::cout << "box body id: " << model.getBodyId("box") << "\n";
+  std::cout << "box body id: " << model.getBodyId("table") << "\n"; 
+  std::cout << "force size: " << data.of.size() << "\n";
+  std::cout << "force 0: " << data.of[0] << "\n";
+  std::cout << "force 1: " << data.of[1] << "\n";
+  std::cout << "force 2: " << data.of[2] << "\n";
+  std::cout << "lambda_c: " << data.lambda_c << "\n";
 
 
 

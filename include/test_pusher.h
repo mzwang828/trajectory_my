@@ -59,6 +59,11 @@ public:
     } else if (name == "exforce") {
       for (int i = 0; i < n; i++)
         xvar(i) = 1;
+    } else if (name == "slack") {
+      for (int i = 0; i < n/2; i++){
+        xvar(i) = 0.1;
+        xvar(n/2 + i) = 1;
+      }
     }
   }
 
@@ -86,7 +91,7 @@ public:
       bounds.at(1) = Bounds(0.35, 0.35);
       bounds.at(2) = Bounds(0, 0);
       bounds.at(3) = Bounds(0, 0);
-      bounds.at(GetRows()-3) = Bounds(0.45, 0.45);
+      bounds.at(GetRows()-3) = Bounds(0.43, 0.43);
       bounds.at(GetRows()-2) = Bounds(0, 0);
     } else if (GetName() == "velocity") {
       for (int i = 0; i < GetRows(); i++)
@@ -100,7 +105,12 @@ public:
         bounds.at(i) = Bounds(-effort_lim, effort_lim);
     } else if (GetName() == "exforce") {
       for (int i = 0; i < GetRows(); i++)
-        bounds.at(i) = Bounds(-force_lim, force_lim);
+        bounds.at(i) = Bounds(-force_lim, force_lim);  // NOTE
+    } else if (GetName() == "slack") {
+      for (int i = 0; i < GetRows()/2; i++) {
+        bounds.at(i) = Bounds(0, inf);  // distance slack
+        bounds.at(GetRows()/2 + i) = Bounds(-force_lim, force_lim); // force slack
+      }        
     }
     return bounds;
   }
@@ -203,6 +213,7 @@ public:
     VectorXd vel = GetVariables()->GetComponent("velocity")->GetValues();
     VectorXd effort = GetVariables()->GetComponent("effort")->GetValues();
     VectorXd exforce = GetVariables()->GetComponent("exforce")->GetValues();
+    VectorXd slack = GetVariables()->GetComponent("slack")->GetValues();
 
     // set contraint for each knot point
     // constraints shape
@@ -279,12 +290,16 @@ public:
               (vel.segment(n_dof * (i + 1), n_dof) -
                vel.segment(n_dof * i, n_dof)) +
           Minv * (data_next.nle - B * effort(i + 1)) -
-          J_remapped * exforce.segment(n_exforce * (i + 1), n_exforce);
+          J_remapped * exforce(i);
 
       // Complementary constraints, 3 constraints for each step
-      g(n_dof * 2 * (n_step - 1) + i) = dr.min_distance;
-      g(n_dof * 2 * (n_step - 1) + n_step - 1 + i) = exforce(i);
-      g(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i) = dr.min_distance * exforce(i);
+      g(n_dof * 2 * (n_step - 1) + i) = dr.min_distance - slack(i);
+      g(n_dof * 2 * (n_step - 1) + n_step - 1 + i) = exforce(i) - slack(n_step - 1 + i);
+      // g(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i) = dr.min_distance * exforce(i);
+      g(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i) = slack(i) * slack(n_step - 1 + i);
+      // slack
+      // g(n_dof * 2 * (n_step - 1) + 3 * (n_step - 1) + i) = slack(i);
+      // g(n_dof * 2 * (n_step - 1) + 4 * (n_step - 1) + i) = slack(n_step - 1 + i);
     }
     return g;
   };
@@ -296,10 +311,17 @@ public:
     VecBound bounds(GetRows());
     for (int i = 0; i < n_dof * 2 * (n_step - 1); i++)
       bounds.at(i) = Bounds(0.0, 0.0);
+    // for (int i = 0; i < n_step - 1; i++){
+    //   bounds.at(n_dof * 2 * (n_step - 1) + i) = Bounds(0.0, inf);
+    //   bounds.at(n_dof * 2 * (n_step - 1) + n_step - 1 + i) = Bounds(0.0, inf);
+    //   bounds.at(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i) = Bounds(0.0, 0.0);
+    // }
     for (int i = 0; i < n_step - 1; i++){
-      bounds.at(n_dof * 2 * (n_step - 1) + i) = Bounds(0.0, inf);
-      bounds.at(n_dof * 2 * (n_step - 1) + n_step - 1 + i) = Bounds(0.0, inf);
+      bounds.at(n_dof * 2 * (n_step - 1) + i) = Bounds(0.0, 0.0);
+      bounds.at(n_dof * 2 * (n_step - 1) + n_step - 1 + i) = Bounds(0.0, 0.0);
       bounds.at(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i) = Bounds(0.0, 0.0);
+      // bounds.at(n_dof * 2 * (n_step - 1) + 3 * (n_step - 1) + i) = Bounds(0.0, inf);
+      // bounds.at(n_dof * 2 * (n_step - 1) + 4 * (n_step - 1) + i) = Bounds(0.0, inf);
     }
     return bounds;
   }

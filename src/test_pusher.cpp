@@ -21,7 +21,9 @@ int main()
   nlp.AddVariableSet  (std::make_shared<ExVariables>(ndof*nsteps, "position"));
   nlp.AddVariableSet  (std::make_shared<ExVariables>(ndof*nsteps, "velocity"));
   nlp.AddVariableSet  (std::make_shared<ExVariables>(n_control*nsteps, "effort"));
-  nlp.AddVariableSet  (std::make_shared<ExVariables>(n_exforce*nsteps, "exforce"));
+  nlp.AddVariableSet  (std::make_shared<ExVariables>(n_exforce*nsteps-n_exforce, "exforce"));
+  nlp.AddVariableSet  (std::make_shared<ExVariables>(2*n_exforce*nsteps-2, "slack"));
+
 
   nlp.AddConstraintSet(std::make_shared<ExConstraint>(2*ndof*(nsteps-1)+3*(nsteps-1)));
   nlp.AddCostSet      (std::make_shared<ExCost>());
@@ -36,7 +38,8 @@ int main()
 
   Eigen::Map<Eigen::MatrixXd> Q(variables.segment(0, ndof*nsteps).data(), ndof, nsteps);
   Eigen::Map<Eigen::MatrixXd> Q_dot(variables.segment(ndof*nsteps, ndof*nsteps).data(), ndof, nsteps);
-  Eigen::Map<Eigen::MatrixXd> T(variables.segment(2*ndof*nsteps, ndof*nsteps).data(), ndof, nsteps);
+  Eigen::Map<Eigen::MatrixXd> C(variables.segment(2*ndof*nsteps, n_control*nsteps).data(), n_control, nsteps);
+  Eigen::Map<Eigen::MatrixXd> F(variables.segment(2*ndof*nsteps+n_control*nsteps, n_exforce*nsteps).data(), n_exforce, nsteps);
 
   // write trajectory to file
   std::ofstream trajFile;
@@ -53,8 +56,11 @@ int main()
       for (int j = 0; j < ndof; j++){
         trajFile << Q_dot(j, i) << ",";        
       }    
-      for (int j = 0; j < ndof; j++){
-        trajFile << T(j, i) << ",";        
+      for (int j = 0; j < n_control; j++){
+        trajFile << C(j, i) << ",";        
+      }
+      for (int j = 0; j < n_exforce; j++){
+        trajFile << F(j, i) << ",";        
       }
       trajFile << "\n";
     }
@@ -66,6 +72,7 @@ int main()
 
   std::cout << "Q: \n" << Q << std::endl;
   std::cout << "Q_dot: \n" << Q_dot << std::endl;
-  std::cout << "T: \n" << T << std::endl;
+  std::cout << "C: \n" << C << std::endl;
+  std::cout << "eF: \n" << F << std::endl;
   
 }
