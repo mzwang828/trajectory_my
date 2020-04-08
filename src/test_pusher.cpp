@@ -21,7 +21,7 @@ int main()
   nlp.AddVariableSet  (std::make_shared<ExVariables>(ndof*nsteps, "position"));
   nlp.AddVariableSet  (std::make_shared<ExVariables>(ndof*nsteps, "velocity"));
   nlp.AddVariableSet  (std::make_shared<ExVariables>(n_control*nsteps, "effort"));
-  nlp.AddVariableSet  (std::make_shared<ExVariables>(n_exforce*nsteps-n_exforce, "exforce"));
+  nlp.AddVariableSet  (std::make_shared<ExVariables>(n_exforce*nsteps, "exforce"));
   nlp.AddVariableSet  (std::make_shared<ExVariables>(2*n_exforce*nsteps-2, "slack"));
 
 

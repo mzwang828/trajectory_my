@@ -91,8 +91,8 @@ public:
       bounds.at(1) = Bounds(0.35, 0.35);
       bounds.at(2) = Bounds(0, 0);
       bounds.at(3) = Bounds(0, 0);
-      bounds.at(GetRows()-3) = Bounds(0.43, 0.43);
-      bounds.at(GetRows()-2) = Bounds(0, 0);
+      // bounds.at(GetRows()-3) = Bounds(0.43, 0.43);
+      // bounds.at(GetRows()-2) = Bounds(0, 0);
     } else if (GetName() == "velocity") {
       for (int i = 0; i < GetRows(); i++)
         bounds.at(i) = Bounds(-velocity_lim, velocity_lim);
@@ -223,11 +223,12 @@ public:
     //   --------------------------------
     //   ndof * (n_steps - 1) constraints for q_ddot
     //   --------------------------------
-    //   n_steps - 1 constraints for distance
+    //   n_steps - 1 constraints for distance (with slack)
+    //   -------------------------------- 
+    //   n_steps - 1 constraints for exforce (with slack)
     //   --------------------------------
-    //   n_steps - 1 constraints for exforce
+    //   n_steps - 1 constraints for complementary (slack)
     //   --------------------------------
-    //   n_steps - 1 constraints for complementary
     // ]
     ///////////////////////////////////////////////
     for (int i = 0; i < n_step - 1; i++) {
@@ -271,15 +272,19 @@ public:
                                   w_J_contact);
       pinocchio::getFrameJacobian(model, data_next, object_contactId, pinocchio::WORLD,
                                   w_J_object);
-      // Jacobian mapping exforce to both robot and object
-      pinocchio::Data::Matrix6x J_final = w_J_contact + w_J_object;
       // TODO: normal force normal vector. fixed for now
       Eigen::Vector3d normal_f(1, 0, 0);
       normal_f.normalize();
+      // Jacobian mapping exforce to both robot and object
+      // Be careful to the sign!!! Different for pusher and box!
+      pinocchio::Data::Matrix6x J_final = -1 * w_J_contact + w_J_object;
+      
       Eigen::VectorXd J_remapped(model.nv);
       J_remapped = (normal_f.transpose() * J_final.topRows(3)).transpose();
+      // std::cout << J_remapped << "\n";
       // Input Mapping
       Eigen::Vector4d B(1.0, 0, 0, 0);
+      Eigen::Vector4d f(0.0, 0.05, 0, 0);
       // backward integration
       g.segment(n_dof * i, n_dof) =
           pos.segment(n_dof * i, n_dof) - pos.segment(n_dof * (i + 1), n_dof) +
@@ -290,11 +295,11 @@ public:
               (vel.segment(n_dof * (i + 1), n_dof) -
                vel.segment(n_dof * i, n_dof)) +
           Minv * (data_next.nle - B * effort(i + 1)) -
-          J_remapped * exforce(i);
+          J_remapped * exforce(i+1)/* + f * vel(n_dof * (i + 1)+1)*/;
 
       // Complementary constraints, 3 constraints for each step
       g(n_dof * 2 * (n_step - 1) + i) = dr.min_distance - slack(i);
-      g(n_dof * 2 * (n_step - 1) + n_step - 1 + i) = exforce(i) - slack(n_step - 1 + i);
+      g(n_dof * 2 * (n_step - 1) + n_step - 1 + i) = exforce(i+1) - slack(n_step - 1 + i);
       // g(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i) = dr.min_distance * exforce(i);
       g(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i) = slack(i) * slack(n_step - 1 + i);
       // slack
@@ -337,6 +342,7 @@ public:
   ExCost(const std::string &name) : CostTerm(name) {}
 
   double GetCost() const override {
+    VectorXd pos = GetVariables()->GetComponent("position")->GetValues();
     VectorXd torque = GetVariables()->GetComponent("effort")->GetValues();
     int n = GetVariables()->GetComponent("effort")->GetRows();
     Eigen::VectorXd vec(n);
@@ -347,7 +353,13 @@ public:
     vec(vec.size() - 1) = 0.5;
     Eigen::MatrixXd weight(n, n);
     weight = vec.asDiagonal();
-    auto cost = (torque.transpose() * weight) * torque;
+    // double cost = (torque.transpose() * weight) * torque;
+
+    YAML::Node params = YAML::LoadFile("/home/mzwang/catkin_ws/src/trajectory_my/Config/params.yaml");
+    std::vector<double> box_goal = params["box_goal"].as< std::vector<double> >();
+    // double cost = 50*(pow((box_goal[0] - pos[pos.size() - 3]), 2) + pow((box_goal[1] - pos[pos.size() - 2]), 2));
+    double cost = abs(box_goal[0] - pos[pos.size() - 3]) + abs(box_goal[1] - pos[pos.size() - 2]);
+
     return cost;
   };
 
