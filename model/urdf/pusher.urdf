@@ -83,7 +83,7 @@
   <joint name="base_to_pusher" type="prismatic">
     <parent link="base"/>
     <child link="pusher"/>
-    <limit effort="1000.0" lower="-0.05" upper="0.2" velocity="0.5"/>
+    <limit effort="1000.0" lower="-0.05" upper="0.5" velocity="0.5"/>
   </joint>
 
   <joint name="base_to_table" type="fixed">
