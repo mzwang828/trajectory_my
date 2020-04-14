@@ -61,9 +61,18 @@ public:
         xvar(i) = 1;
     } else if (name == "slack") {
       for (int i = 0; i < n/2; i++){
-        xvar(i) = 0.1;
+        xvar(i) = 0.2;
         xvar(n/2 + i) = 1;
       }
+    }
+    // FOR FRICTION
+    else if (name == "friction") {
+      for (int i = 0; i < n; i++)
+        xvar(i) = 0;
+    }
+    else if (name == "v_slack") {
+      for (int i = 0; i < n; i++)
+        xvar(i) = 0;
     }
   }
 
@@ -86,13 +95,13 @@ public:
       for (int i = 0; i < GetRows(); i++)
         bounds.at(i) = Bounds(-5, 5);
       for (int i = 0; i < GetRows(); i = i+4)
-        bounds.at(i) = Bounds(-0.05, 0.5);
+        bounds.at(i) = Bounds(-0.05, 1.0);
       bounds.at(0) = Bounds(0, 0);
       bounds.at(1) = Bounds(0.35, 0.35);
       bounds.at(2) = Bounds(0, 0);
       bounds.at(3) = Bounds(0, 0);
-      // bounds.at(GetRows()-3) = Bounds(0.43, 0.43);
-      // bounds.at(GetRows()-2) = Bounds(0, 0);
+      bounds.at(GetRows()-3) = Bounds(0.56, 0.56);
+      bounds.at(GetRows()-2) = Bounds(0, 0);
     } else if (GetName() == "velocity") {
       for (int i = 0; i < GetRows(); i++)
         bounds.at(i) = Bounds(-velocity_lim, velocity_lim);
@@ -112,6 +121,15 @@ public:
         bounds.at(GetRows()/2 + i) = Bounds(0, force_lim); // force slack
       }       
     }
+    // FOR FRICTION
+    else if (GetName() == "friction") {
+      for (int i = 0; i < GetRows(); i++)
+        bounds.at(i) = Bounds(0, inf);
+    }
+    else if (GetName() == "v_slack") {
+      for (int i = 0; i < GetRows(); i++)
+        bounds.at(i) = Bounds(0, inf);
+    }
     return bounds;
   }
 
@@ -119,8 +137,8 @@ private:
   Eigen::VectorXd xvar;
   double position_lim = 5;
   double velocity_lim = 5;
-  double effort_lim = 10;
-  double force_lim = 10;
+  double effort_lim = 100;
+  double force_lim = 100;
 };
 
 // system dynamics constraints
@@ -214,6 +232,9 @@ public:
     VectorXd effort = GetVariables()->GetComponent("effort")->GetValues();
     VectorXd exforce = GetVariables()->GetComponent("exforce")->GetValues();
     VectorXd slack = GetVariables()->GetComponent("slack")->GetValues();
+    // FOR FRICTION
+    // VectorXd friction = GetVariables()->GetComponent("friction")->GetValues();
+    // VectorXd v_slack = GetVariables()->GetComponent("v_slack")->GetValues();
 
     // set contraint for each knot point
     // constraints shape
@@ -261,23 +282,6 @@ public:
       Eigen::MatrixXd Minv = data_next.Minv;
       Minv.triangularView<Eigen::StrictlyLower>() =
           Minv.transpose().triangularView<Eigen::StrictlyLower>();
-
-      pinocchio::Data::Matrix6x w_J_contact(6, model.nv),
-          w_J_object(6, model.nv);
-      w_J_contact.fill(0);
-      w_J_object.fill(0);
-      pinocchio::computeJointJacobians(model, data_next, q);
-      pinocchio::framesForwardKinematics(model, data_next, q);
-      pinocchio::getFrameJacobian(model, data_next, contactId, pinocchio::WORLD,
-                                  w_J_contact);
-      pinocchio::getFrameJacobian(model, data_next, object_contactId, pinocchio::WORLD,
-                                  w_J_object);
-      // TODO: normal force normal vector. fixed for now
-      Eigen::Vector3d normal_f(1, 0, 0);
-      normal_f.normalize();
-      // Jacobian mapping exforce to both robot and object
-      // Be careful to the sign!!! Different for pusher and box!
-      pinocchio::Data::Matrix6x J_final = -1 * w_J_contact + w_J_object;
       
       Eigen::VectorXd J_remapped(model.nv);
       // J_remapped = (normal_f.transpose() * J_final.topRows(3)).transpose();
@@ -286,30 +290,39 @@ public:
       // Input Mapping
       Eigen::Vector4d B(1.0, 0, 0, 0);
       Eigen::Vector4d f(0.0, 0.5, 0, 0);
+      double distance = pos(n_dof * i + 1) - pos(n_dof * i);
       // backward integration
       g.segment(n_dof * i, n_dof) =
           pos.segment(n_dof * i, n_dof) - pos.segment(n_dof * (i + 1), n_dof) +
           t_step * (vel.segment(n_dof * (i + 1), n_dof));
 
-      if (vel(n_dof * (i) + 1) == 0) {
-        g.segment(n_dof * (n_step - 1 + i), n_dof) =
-            1 / t_step *
-                (vel.segment(n_dof * (i + 1), n_dof) -
-                 vel.segment(n_dof * i, n_dof)) +
-            Minv * (data_next.nle - B * effort(i + 1)) -
-            J_remapped * exforce(i + 1);
-      } else {
-        g.segment(n_dof * (n_step - 1 + i), n_dof) =
-            1 / t_step *
-                (vel.segment(n_dof * (i + 1), n_dof) -
-                 vel.segment(n_dof * i, n_dof)) +
-            Minv * (data_next.nle - B * effort(i + 1)) -
-            J_remapped * exforce(i + 1) + f;
-            // (signbit(vel(n_dof * (i) + 1)) ? -1 : 1) * f;
-      }
+      // smoothed if condition
+      g.segment(n_dof * (n_step - 1 + i), n_dof) =
+          1 / t_step *
+              (vel.segment(n_dof * (i + 1), n_dof) -
+                vel.segment(n_dof * i, n_dof)) +
+          Minv * (data_next.nle - B * effort(i + 1)) -
+          J_remapped * exforce(i + 1) + f*tanh(20*vel(n_dof * (i) + 1));
+
+      // Complimentary friction////////////////
+      // Eigen::Vector4d friction_pos(0.0, friction(i), 0, 0);
+      // Eigen::Vector4d friction_neg(0.0, -friction(n_step - 1 + i), 0, 0);
+      // g.segment(n_dof * (n_step - 1 + i), n_dof) =
+      //     1 / t_step *
+      //         (vel.segment(n_dof * (i + 1), n_dof) -
+      //           vel.segment(n_dof * i, n_dof)) +
+      //     Minv * (data_next.nle - B * effort(i + 1)) -
+      //     J_remapped * exforce(i + 1) + friction_pos + friction_neg;
+      // g(n_dof * 2 * (n_step - 1) + 3 * (n_step - 1) + i) = v_slack(i) + vel(n_dof * (i) + 1); // Eq. (11)
+      // g(n_dof * 2 * (n_step - 1) + 4 * (n_step - 1) + i) = v_slack(i) - vel(n_dof * (i) + 1); // Eq. (12)
+      // g(n_dof * 2 * (n_step - 1) + 5 * (n_step - 1) + i) = 0.5 - friction(i) - friction(n_step - 1 + i); // Eq. (10)
+      // g(n_dof * 2 * (n_step - 1) + 6 * (n_step - 1) + i) = (0.5 - friction(i) - friction(n_step - 1 + i)) * v_slack(i); // Eq. (14)
+      // g(n_dof * 2 * (n_step - 1) + 7 * (n_step - 1) + i) = (v_slack(i) + vel(n_dof * (i) + 1)) * friction(i); // Eq. (15)
+      // g(n_dof * 2 * (n_step - 1) + 8 * (n_step - 1) + i) = (v_slack(i) - vel(n_dof * (i) + 1)) * friction(n_step - 1 + i); // Eq. (16)
+      /////////////////////////////////////////
 
       // Complementary constraints, 3 constraints for each step
-      g(n_dof * 2 * (n_step - 1) + i) = dr.min_distance - slack(i);
+      g(n_dof * 2 * (n_step - 1) + i) = distance - slack(i);
       g(n_dof * 2 * (n_step - 1) + n_step - 1 + i) = exforce(i+1) - slack(n_step - 1 + i);
       // g(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i) = dr.min_distance * exforce(i);
       g(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i) = slack(i) * slack(n_step - 1 + i);
@@ -333,11 +346,16 @@ public:
     //   bounds.at(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i) = Bounds(0.0, 0.0);
     // }
     for (int i = 0; i < n_step - 1; i++){
-      bounds.at(n_dof * 2 * (n_step - 1) + i) = Bounds(0.0, 0.0);
+      bounds.at(n_dof * 2 * (n_step - 1) + i) = Bounds(0.285, 0.285);
       bounds.at(n_dof * 2 * (n_step - 1) + n_step - 1 + i) = Bounds(0.0, 0.0);
       bounds.at(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i) = Bounds(0.0, 0.0);
-      // bounds.at(n_dof * 2 * (n_step - 1) + 3 * (n_step - 1) + i) = Bounds(0.0, inf);
-      // bounds.at(n_dof * 2 * (n_step - 1) + 4 * (n_step - 1) + i) = Bounds(0.0, inf);
+      // FRICTION
+      // bounds.at(n_dof * 2 * (n_step - 1) + 3 * (n_step - 1) + i) = Bounds(0.0, inf); // Eq. (11)
+      // bounds.at(n_dof * 2 * (n_step - 1) + 4 * (n_step - 1) + i) = Bounds(0.0, inf); // Eq. (12)
+      // bounds.at(n_dof * 2 * (n_step - 1) + 5 * (n_step - 1) + i) = Bounds(0.0, inf); // Eq. (10)
+      // bounds.at(n_dof * 2 * (n_step - 1) + 6 * (n_step - 1) + i) = Bounds(0.0, 0.0); // Eq. (14)
+      // bounds.at(n_dof * 2 * (n_step - 1) + 7 * (n_step - 1) + i) = Bounds(0.0, 0.0); // Eq. (15)
+      // bounds.at(n_dof * 2 * (n_step - 1) + 8 * (n_step - 1) + i) = Bounds(0.0, 0.0); // Eq. (16)
     }
     return bounds;
   }
@@ -364,11 +382,11 @@ public:
     vec(vec.size() - 1) = 0.5;
     Eigen::MatrixXd weight(n, n);
     weight = vec.asDiagonal();
-    // double cost = (torque.transpose() * weight) * torque;
+    double cost = (torque.transpose() * weight) * torque;
 
     YAML::Node params = YAML::LoadFile("/home/mzwang/catkin_ws/src/trajectory_my/Config/params.yaml");
     std::vector<double> box_goal = params["box_goal"].as< std::vector<double> >();
-    double cost = (pow((box_goal[0] - pos[pos.size() - 3]), 2) + pow((box_goal[1] - pos[pos.size() - 2]), 2));
+    // double cost = 100*(pow((box_goal[0] - pos[pos.size() - 3]), 2) + pow((box_goal[1] - pos[pos.size() - 2]), 2));
     // double cost = abs(box_goal[0] - pos[pos.size() - 3]) + abs(box_goal[1] - pos[pos.size() - 2]);
 
     return cost;

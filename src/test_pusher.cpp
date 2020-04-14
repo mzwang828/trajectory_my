@@ -2,7 +2,7 @@
 #include <fstream>
 #include <ifopt/problem.h>
 #include <ifopt/snopt_solver.h>
-#include "test_pusher.h"
+#include "test_pusher_manual.h"
 #include <yaml-cpp/yaml.h>
 
 using namespace ifopt;
@@ -22,10 +22,14 @@ int main()
   nlp.AddVariableSet  (std::make_shared<ExVariables>(ndof*nsteps, "velocity"));
   nlp.AddVariableSet  (std::make_shared<ExVariables>(n_control*nsteps, "effort"));
   nlp.AddVariableSet  (std::make_shared<ExVariables>(n_exforce*nsteps, "exforce"));
-  nlp.AddVariableSet  (std::make_shared<ExVariables>(2*n_exforce*nsteps-2, "slack"));
-
+  nlp.AddVariableSet  (std::make_shared<ExVariables>(2*nsteps-2, "slack"));
+  // FRICTION
+  // nlp.AddVariableSet  (std::make_shared<ExVariables>(2*nsteps-2, "friction"));
+  // nlp.AddVariableSet  (std::make_shared<ExVariables>(nsteps-1, "v_slack"));
+  //////////////////////////////////////////////////////////////////////////////
 
   nlp.AddConstraintSet(std::make_shared<ExConstraint>(2*ndof*(nsteps-1)+3*(nsteps-1)));
+  // nlp.AddConstraintSet(std::make_shared<ExConstraint>(2*ndof*(nsteps-1)+9*(nsteps-1)));
   nlp.AddCostSet      (std::make_shared<ExCost>());
   nlp.PrintCurrent();
 
@@ -40,6 +44,8 @@ int main()
   Eigen::Map<Eigen::MatrixXd> Q_dot(variables.segment(ndof*nsteps, ndof*nsteps).data(), ndof, nsteps);
   Eigen::Map<Eigen::MatrixXd> C(variables.segment(2*ndof*nsteps, n_control*nsteps).data(), n_control, nsteps);
   Eigen::Map<Eigen::MatrixXd> F(variables.segment(2*ndof*nsteps+n_control*nsteps, n_exforce*nsteps).data(), n_exforce, nsteps);
+  Eigen::Map<Eigen::MatrixXd> d_slack(variables.segment(2*ndof*nsteps+n_control*nsteps + nsteps, nsteps - 1).data(), 1, nsteps - 1);
+  Eigen::Map<Eigen::MatrixXd> f_slack(variables.segment(2*ndof*nsteps+n_control*nsteps + nsteps + nsteps - 1, nsteps - 1).data(), 1, nsteps - 1);
 
   // write trajectory to file
   std::ofstream trajFile;
@@ -74,5 +80,8 @@ int main()
   std::cout << "Q_dot: \n" << Q_dot << std::endl;
   std::cout << "C: \n" << C << std::endl;
   std::cout << "eF: \n" << F << std::endl;
+  std::cout << "distance_slack: \n" << d_slack << std::endl;
+  std::cout << "force_slack: \n" << f_slack << std::endl;
+
   
 }

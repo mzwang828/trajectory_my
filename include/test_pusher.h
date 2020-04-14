@@ -291,22 +291,12 @@ public:
           pos.segment(n_dof * i, n_dof) - pos.segment(n_dof * (i + 1), n_dof) +
           t_step * (vel.segment(n_dof * (i + 1), n_dof));
 
-      if (vel(n_dof * (i) + 1) == 0) {
-        g.segment(n_dof * (n_step - 1 + i), n_dof) =
-            1 / t_step *
-                (vel.segment(n_dof * (i + 1), n_dof) -
-                 vel.segment(n_dof * i, n_dof)) +
-            Minv * (data_next.nle - B * effort(i + 1)) -
-            J_remapped * exforce(i + 1);
-      } else {
-        g.segment(n_dof * (n_step - 1 + i), n_dof) =
-            1 / t_step *
-                (vel.segment(n_dof * (i + 1), n_dof) -
-                 vel.segment(n_dof * i, n_dof)) +
-            Minv * (data_next.nle - B * effort(i + 1)) -
-            J_remapped * exforce(i + 1) + f;
-            // (signbit(vel(n_dof * (i) + 1)) ? -1 : 1) * f;
-      }
+      g.segment(n_dof * (n_step - 1 + i), n_dof) =
+          1 / t_step *
+              (vel.segment(n_dof * (i + 1), n_dof) -
+                vel.segment(n_dof * i, n_dof)) +
+          Minv * (data_next.nle - B * effort(i + 1)) -
+          J_remapped * exforce(i + 1) + f*tanh(20*vel(n_dof * (i) + 1));
 
       // Complementary constraints, 3 constraints for each step
       g(n_dof * 2 * (n_step - 1) + i) = dr.min_distance - slack(i);

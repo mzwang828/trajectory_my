@@ -160,7 +160,7 @@ int main(int argc, char ** argv)
 
   Eigen::VectorXd q = randomConfiguration(model);
 
-  q << 1.0, 1.5, 0, 1, 0;
+  q << 1.225, 1.5, 0, 1, 0;
   forwardKinematics(model,data,q);
   updateFramePlacements(model,data);
   // std::cout << "Joint value: " << q.transpose()  << "\n";
@@ -175,25 +175,6 @@ int main(int argc, char ** argv)
 
   GeomIndex tip_id = geom_model.getGeometryId("tip_0");
   GeomIndex box_id = geom_model.getGeometryId("box_0");
-
-  Data::Matrix6x w_J_contact(6,model.nv), w_J_object(6, model.nv);
-  w_J_contact.fill(0);
-  w_J_object.fill(0);
-  computeJointJacobians(model, data, q);
-  framesForwardKinematics(model, data, q);
-  getFrameJacobian(model, data, contactId, WORLD, w_J_contact);
-  getFrameJacobian(model, data, object_contactId, WORLD, w_J_object);
-
-  std::cout << "contact jacobian: " << w_J_contact << "\n";
-  std::cout << "object jacobian: " << w_J_object << "\n";
-
-  pinocchio::Data::Matrix6x J_final = -1 * w_J_contact + w_J_object;
-  Eigen::Vector3d normal_f(1, 0, 0);
-  Eigen::VectorXd J_remapped(model.nv);
-  J_remapped = (normal_f.transpose() * J_final.topRows(3)).transpose();
-
-  std::cout << J_remapped << "\n";
-  // all collision pairs
   
   // q << 0, 0, 0, -0.5, -1;
   // forwardKinematics(model,data,q);
@@ -235,6 +216,24 @@ int main(int argc, char ** argv)
   std::cout << "object contact frame pose: \n" << data.oMf[model.getFrameId("object_contactPoint")] << "\n";
 
 
+  Data::Matrix6x w_J_contact(6,model.nv), w_J_object(6, model.nv);
+  w_J_contact.fill(0);
+  w_J_object.fill(0);
+  computeJointJacobians(model, data, q);
+  framesForwardKinematics(model, data, q);
+  getFrameJacobian(model, data, contactId, WORLD, w_J_contact);
+  getFrameJacobian(model, data, object_contactId, WORLD, w_J_object);
+
+  std::cout << "contact jacobian: " << w_J_contact << "\n";
+  std::cout << "object jacobian: " << w_J_object << "\n";
+
+  pinocchio::Data::Matrix6x J_final = -1 * w_J_contact + w_J_object;
+  Eigen::Vector3d normal_f(1, 0, 0);
+  Eigen::VectorXd J_remapped(model.nv);
+  J_remapped = (normal_f.transpose() * J_final.topRows(3)).transpose();
+
+  std::cout << J_remapped << "\n";
+  // all collision pairs
   // for(size_t k = 0; k < geom_model.collisionPairs.size(); ++k)
   // {
   //   const CollisionPair & cp = geom_model.collisionPairs[k];
