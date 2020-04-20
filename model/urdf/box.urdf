@@ -1,5 +1,10 @@
 <?xml version="1.0"?>
-<robot name="box">
+<robot name="boxx">
+
+  <material name="white">
+    <color rgba="1 1 1 1"/>
+  </material>
+
   <link name="box">
     <visual>
       <geometry>
@@ -16,4 +21,25 @@
       <inertia ixx="0.1666667" ixy="0.0" ixz="0.0" iyy="0.1666667" iyz="0.0" izz="0.1666667"/>
     </inertial>
   </link>
+
+  <link name="obj_front">
+    <visual>
+      <geometry>
+        <box size="1e-3 0.05 0.05"/>
+      </geometry>
+    <material name="white"/>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="1e-3 0.05 0.05"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="obj_front_link" type="fixed">
+    <parent link="box"/>
+    <child link="obj_front"/>
+    <origin xyz="-0.025 0 0"/>
+  </joint>
+  
 </robot>

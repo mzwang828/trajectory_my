@@ -49,10 +49,10 @@ public:
     // the initial values where the NLP starts iterating from
     if (name == "position") {
       for (int i = 0; i < n; i++)
-        xvar(i) = 0;
+        xvar(i) = 0.0;
     } else if (name == "velocity") {
       for (int i = 0; i < n; i++)
-        xvar(i) = 0.5;
+        xvar(i) = 0.0;
     } else if (name == "effort") {
       for (int i = 0; i < n; i++)
         xvar(i) = 1;
@@ -151,10 +151,11 @@ public:
   const std::string box_filename =
       PINOCCHIO_MODEL_DIR + std::string("/urdf/box.urdf");
 
-  mutable pinocchio::Model model;
+  mutable pinocchio::Model robot_model, box_model, model;
   pinocchio::GeometryModel geom_model, box_geom_model;
   pinocchio::PairIndex cp_index;
   pinocchio::FrameIndex contactId, object_contactId;
+  Eigen::Vector3d front_normal; // normal vector point to the front plane
   int n_dof;       // number of freedom
   int n_control;     // number of control
   int n_exforce;   // number of external force
@@ -163,41 +164,41 @@ public:
 
   ExConstraint(int n) : ExConstraint(n, "constraint1") {}
   ExConstraint(int n, const std::string &name) : ConstraintSet(n, name) {
-    pinocchio::urdf::buildModel(urdf_filename, model); // build the pusher model
-    pinocchio::JointIndex joint_index = model.joints.size();
-    pinocchio::FrameIndex frame_index = model.nframes;
+    front_normal << 1,0,0;
+    // build the pusher model
+    pinocchio::urdf::buildModel(urdf_filename, robot_model); 
+    // build the box model
+    pinocchio::urdf::buildModel(box_filename, pinocchio::JointModelPlanar(), box_model); 
+    // set planar joint bounds, root joint is with joint_index 1
+    setRootJointBounds(box_model, 1);
+    // change box root joint name, otherwise duplicated with robot root joint
+    box_model.frames[1].name = "box_root_joint"; // index of root joint is 1. 0 = universe
+    box_model.names[1] = "box_root_joint";
+    pinocchio::appendModel(box_model, robot_model, 0, pinocchio::SE3::Identity(), model);
     // add virtual contact point frame for Jacobian calculation
     // add as many as needed
-    contactId =  model.addFrame(pinocchio::Frame("contactPoint", 
-                                model.getJointId("base_to_pusher"), 
-                                -1, 
-                                pinocchio::SE3::Identity(), 
-                                pinocchio::OP_FRAME));
-    // build the box into the model
-    pinocchio::urdf::buildModel(box_filename, pinocchio::JointModelPlanar(), model); 
-    // set planar joint bounds
-    setRootJointBounds(model, joint_index); 
-    // change box root joint name, otherwise duplicated with robot root joint
-    model.names[joint_index] = "box_root_joint";
-    model.frames[frame_index].name = "box_root_joint";
-    // add virtual contact point frame on box
-    object_contactId =  model.addFrame(
-                                pinocchio::Frame("object_contactPoint", 
-                                model.getJointId("box_root_joint"), 
-                                -1, 
-                                pinocchio::SE3::Identity(), 
-                                pinocchio::OP_FRAME));
+    pinocchio::Model::Index contactId =  model.addFrame(
+                                    pinocchio::Frame("contactPoint", 
+                                    model.getJointId("base_to_pusher"), 
+                                    -1, 
+                                    pinocchio::SE3::Identity(), 
+                                    pinocchio::OP_FRAME));
+    pinocchio::Model::Index object_contactId =  model.addFrame(
+                                    pinocchio::Frame("object_contactPoint", 
+                                    model.getJointId("box_root_joint"), 
+                                    -1, 
+                                    pinocchio::SE3::Identity(), 
+                                    pinocchio::OP_FRAME));
     // build the geometry model
     pinocchio::urdf::buildGeom(model, urdf_filename, pinocchio::COLLISION, geom_model, PINOCCHIO_MODEL_DIR);
     pinocchio::urdf::buildGeom(model, box_filename, pinocchio::COLLISION, box_geom_model, PINOCCHIO_MODEL_DIR);
     pinocchio::appendGeometryModel(geom_model, box_geom_model);
-    geom_model.addAllCollisionPairs();
-    pinocchio::srdf::removeCollisionPairs(model, geom_model, srdf_filename);
     
     // define the potential collision pair, as many as needed
     pinocchio::GeomIndex tip_id = geom_model.getGeometryId("tip_0");
-    pinocchio::GeomIndex box_id = geom_model.getGeometryId("box_0");
-    pinocchio::CollisionPair cp = pinocchio::CollisionPair(tip_id, box_id);
+    pinocchio::GeomIndex front_id = geom_model.getGeometryId("obj_front_0");
+    pinocchio::CollisionPair cp = pinocchio::CollisionPair(tip_id, front_id);
+    geom_model.addCollisionPair(cp);
     cp_index = geom_model.findCollisionPair(cp);
 
     YAML::Node params = YAML::LoadFile("/home/mzwang/catkin_ws/src/trajectory_my/Config/params.yaml");
@@ -225,7 +226,7 @@ public:
   VectorXd GetValues() const override {
     pinocchio::Data data(model);
     pinocchio::Data data_next(model);
-    pinocchio::GeometryData geom_data_next(geom_model);
+    pinocchio::GeometryData geom_data(geom_model);
     VectorXd g(GetRows());
     VectorXd pos = GetVariables()->GetComponent("position")->GetValues();
     VectorXd vel = GetVariables()->GetComponent("velocity")->GetValues();
@@ -254,35 +255,69 @@ public:
     ///////////////////////////////////////////////
     for (int i = 0; i < n_step - 1; i++) {
       // construct model configuration. q[-2] = c_theta, q[-1] = s_theta
-      Eigen::VectorXd q(model.nq);
-      q.segment(0, n_dof - 1) = pos.segment(n_dof * (i + 1), n_dof - 1);
-      q(model.nq - 2) = cos(pos(n_dof * (i + 1) + n_dof - 1));
-      q(model.nq - 1) = sin(pos(n_dof * (i + 1) + n_dof - 1));
-      // Update the contact point frame
-      pinocchio::framesForwardKinematics(model, data_next, q);
-      pinocchio::SE3 joint_frame_placement =
-          data.oMf[model.getFrameId("base_to_pusher")];
-      pinocchio::SE3 object_joint_frame_placement =
-          data.oMf[model.getFrameId("box_root_joint")];
-      pinocchio::computeCollisions(model, data_next, geom_model, geom_data_next,
+      Eigen::VectorXd q(model.nq), q_next(model.nq);
+      q.segment(0, n_dof - 1) = pos.segment(n_dof * i, n_dof - 1);
+      q(model.nq - 2) = cos(pos(n_dof * i + n_dof - 1));
+      q(model.nq - 1) = sin(pos(n_dof * i + n_dof - 1));
+      q_next.segment(0, n_dof - 1) = pos.segment(n_dof * (i + 1), n_dof - 1);
+      q_next(model.nq - 2) = cos(pos(n_dof * (i + 1) + n_dof - 1));
+      q_next(model.nq - 1) = sin(pos(n_dof * (i + 1) + n_dof - 1));
+
+      // calculate signed distance
+      pinocchio::computeCollisions(model, data, geom_model, geom_data,
                                    q);
-      pinocchio::computeDistances(model, data_next, geom_model, geom_data_next,
+      pinocchio::computeDistances(model, data, geom_model, geom_data,
                                   q);
-      hpp::fcl::DistanceResult dr = geom_data_next.distanceResults[cp_index];
+      hpp::fcl::DistanceResult dr = geom_data.distanceResults[cp_index];
+      Eigen::Vector3d front_normal_transformed =
+          geom_data.oMg[geom_model.getGeometryId("box_0")].rotation() *
+          front_normal;
+      double distance =
+          signbit(dr.normal.transpose() * front_normal_transformed)
+              ? (-1) * dr.min_distance
+              : dr.min_distance;
+            
+      // Update the contact point frame
+      pinocchio::framesForwardKinematics(model, data_next, q_next);
+      pinocchio::SE3 joint_frame_placement =
+          data_next.oMf[model.getFrameId("base_to_pusher")];
+      pinocchio::SE3 object_joint_frame_placement =
+          data_next.oMf[model.getFrameId("box_root_joint")];
+      pinocchio::computeCollisions(model, data_next, geom_model, geom_data,
+                                   q_next);
+      pinocchio::computeDistances(model, data_next, geom_model, geom_data,
+                                  q_next);
+      dr = geom_data.distanceResults[cp_index];
       model.frames[contactId].placement.translation() =
           joint_frame_placement.inverse().act(dr.nearest_points[0]);
       model.frames[object_contactId].placement.translation() =
           object_joint_frame_placement.inverse().act(dr.nearest_points[1]);
 
       // Calculate NLE, inertial matrix and Jacobian
-      pinocchio::nonLinearEffects(model, data_next, q,
+      pinocchio::nonLinearEffects(model, data_next, q_next,
                                   vel.segment(n_dof * (i + 1), n_dof));
 
-      pinocchio::computeMinverse(model, data_next, q);
+      pinocchio::computeMinverse(model, data_next, q_next);
       Eigen::MatrixXd Minv = data_next.Minv;
       Minv.triangularView<Eigen::StrictlyLower>() =
           Minv.transpose().triangularView<Eigen::StrictlyLower>();
       
+      pinocchio::Data::Matrix6x w_J_contact(6, model.nv), w_J_object(6, model.nv);
+      w_J_contact.fill(0);
+      w_J_object.fill(0);
+      pinocchio::computeJointJacobians(model, data_next, q_next);
+      pinocchio::framesForwardKinematics(model, data_next, q_next);
+      pinocchio::getFrameJacobian(model, data_next, contactId, pinocchio::WORLD,
+                                  w_J_contact);
+      pinocchio::getFrameJacobian(model, data_next, object_contactId, pinocchio::WORLD,
+                                  w_J_object);
+      // TODO: normal force normal vector. fixed for now
+      Eigen::Vector3d normal_f(1, 0, 0);
+      normal_f.normalize();
+      // Jacobian mapping exforce to both robot and object
+      // Be careful to the sign!!! Different for pusher and box!
+      pinocchio::Data::Matrix6x J_final = -1 * w_J_contact + w_J_object;
+
       Eigen::VectorXd J_remapped(model.nv);
       // J_remapped = (normal_f.transpose() * J_final.topRows(3)).transpose();
       J_remapped << -1, 1, 0, 0;
@@ -290,7 +325,9 @@ public:
       // Input Mapping
       Eigen::Vector4d B(1.0, 0, 0, 0);
       Eigen::Vector4d f(0.0, 0.5, 0, 0);
-      double distance = pos(n_dof * i + 1) - pos(n_dof * i);
+      double distance_b = pos(n_dof * i + 1) - pos(n_dof * i);
+      // std::cout << pos.segment(n_dof*i, 4) << "\n";
+      // std::cout << distance << " vs " << distance_b - 0.285 << "\n";
       // backward integration
       g.segment(n_dof * i, n_dof) =
           pos.segment(n_dof * i, n_dof) - pos.segment(n_dof * (i + 1), n_dof) +
@@ -346,7 +383,7 @@ public:
     //   bounds.at(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i) = Bounds(0.0, 0.0);
     // }
     for (int i = 0; i < n_step - 1; i++){
-      bounds.at(n_dof * 2 * (n_step - 1) + i) = Bounds(0.285, 0.285);
+      bounds.at(n_dof * 2 * (n_step - 1) + i) = Bounds(0.0, 0.0);
       bounds.at(n_dof * 2 * (n_step - 1) + n_step - 1 + i) = Bounds(0.0, 0.0);
       bounds.at(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i) = Bounds(0.0, 0.0);
       // FRICTION
