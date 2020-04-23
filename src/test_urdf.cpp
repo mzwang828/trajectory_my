@@ -168,7 +168,7 @@ int main(int argc, char ** argv)
   GeometryData geom_data(geom_model);
   Eigen::VectorXd q = randomConfiguration(model);
 
-  q << 0, 0.35, 0, 1, 0;
+  q << 0, 1.0, 0.0, cos(0.78), sin(0.78);
   // forwardKinematics(model,data,q);
   // updateFramePlacements(model,data);
   // pinocchio::SE3 joint_frame_placement = data.oMf[model.getFrameId("base_to_pusher")];
@@ -196,8 +196,35 @@ int main(int argc, char ** argv)
   std::cout << "Pose of box: \n" << geom_data.oMg[geom_model.getGeometryId("box_0")] << "\n";
   std::cout << "Normal from DistanceResult: " << dr.normal.transpose() << "\n";
 
-  Eigen::Vector3d front_normal(1,0,0);
-  std::cout << "after roation: " <<  geom_data.oMg[geom_model.getGeometryId("obj_front_0")].rotation() * front_normal << "\n";
-  std::cout << dr.normal.transpose() * front_normal << "\n";
+  std::cout << dr.normal.normalized().transpose() << "\n";
+
+  // Jacobian
+  // forwardKinematics(model,data,q);
+  // updateFramePlacements(model,data);
+  framesForwardKinematics(model, data, q);
+  pinocchio::SE3 joint_frame_placement = data.oMf[model.getFrameId("base_to_pusher")];
+  pinocchio::SE3 root_joint_frame_placement = data.oMf[model.getFrameId("box_root_joint")];
+  model.frames[contactId].placement.translation() = joint_frame_placement.inverse().act(dr.nearest_points[0]);
+  model.frames[object_contactId].placement.translation() = root_joint_frame_placement.inverse().act(dr.nearest_points[1]);
+  std::cout << "point on box: " << root_joint_frame_placement.inverse().act(dr.nearest_points[1]).transpose() << "\n";
+
+  pinocchio::Data::Matrix6x w_J_contact(6, model.nv), w_J_object(6, model.nv);
+  w_J_contact.fill(0);
+  w_J_object.fill(0);
+  computeJointJacobians(model, data, q);
+  framesForwardKinematics(model, data, q);
+  getFrameJacobian(model, data, contactId, WORLD, w_J_contact);
+  getFrameJacobian(model, data, object_contactId, WORLD, w_J_object);
+
+  pinocchio::Data::Matrix6x J_final = -1 * w_J_contact + w_J_object;
+
+  Eigen::VectorXd J_remapped(model.nv);
+  J_remapped = J_final.topRows(3).transpose() * dr.normal;
+
+  std::cout << "contact jacobian: " << w_J_contact << "\n";
+  std::cout << "object jacobian: " << w_J_object << "\n";
+  std::cout << "J_all" << J_remapped << "\n";
+
+
 }
 

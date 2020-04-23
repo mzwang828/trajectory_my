@@ -2,7 +2,7 @@
 #include <fstream>
 #include <ifopt/problem.h>
 #include <ifopt/snopt_solver.h>
-#include "test_pusher_manual.h"
+#include "test_pusher.h"
 #include <yaml-cpp/yaml.h>
 
 using namespace ifopt;
