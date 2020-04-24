@@ -168,7 +168,7 @@ int main(int argc, char ** argv)
   GeometryData geom_data(geom_model);
   Eigen::VectorXd q = randomConfiguration(model);
 
-  q << 0, 1.0, 0.0, cos(0.78), sin(0.78);
+  q << 0, 1.0, 1.2, cos(0.52), sin(0.52);
   // forwardKinematics(model,data,q);
   // updateFramePlacements(model,data);
   // pinocchio::SE3 joint_frame_placement = data.oMf[model.getFrameId("base_to_pusher")];
@@ -208,22 +208,41 @@ int main(int argc, char ** argv)
   model.frames[object_contactId].placement.translation() = root_joint_frame_placement.inverse().act(dr.nearest_points[1]);
   std::cout << "point on box: " << root_joint_frame_placement.inverse().act(dr.nearest_points[1]).transpose() << "\n";
 
-  pinocchio::Data::Matrix6x w_J_contact(6, model.nv), w_J_object(6, model.nv);
+  pinocchio::Data::Matrix6x w_J_contact(6, model.nv), w_J_object(6, model.nv), J_local(6, model.nv), J_wl(6, model.nv);
   w_J_contact.fill(0);
   w_J_object.fill(0);
+  J_local.fill(0);
+  J_wl.fill(0);
   computeJointJacobians(model, data, q);
   framesForwardKinematics(model, data, q);
-  getFrameJacobian(model, data, contactId, WORLD, w_J_contact);
+  getFrameJacobian(model, data, contactId, LOCAL_WORLD_ALIGNED, w_J_contact);
   getFrameJacobian(model, data, object_contactId, WORLD, w_J_object);
+  getFrameJacobian(model, data, object_contactId, LOCAL, J_local);
+  getFrameJacobian(model, data, object_contactId, LOCAL_WORLD_ALIGNED, J_wl);
 
   pinocchio::Data::Matrix6x J_final = -1 * w_J_contact + w_J_object;
 
   Eigen::VectorXd J_remapped(model.nv);
-  J_remapped = J_final.topRows(3).transpose() * dr.normal;
+  Eigen::Vector3d front_normal(1.0,0,0);
+  Eigen::Vector3d front_normal_transformed =
+          geom_data.oMg[geom_model.getGeometryId("box_0")].rotation() *
+          front_normal;
+  std::cout << "rotated normal: " << front_normal_transformed << "\n";
+
+ 
+  J_remapped = -1 * w_J_contact.topRows(3).transpose() * 
+                  geom_data.oMg[geom_model.getGeometryId("tip_0")].rotation().transpose() * 
+                  front_normal;
+
+  std::cout << "kanyikan " << geom_data.oMg[geom_model.getGeometryId("tip_0")].rotation().transpose() << "\n";
 
   std::cout << "contact jacobian: " << w_J_contact << "\n";
   std::cout << "object jacobian: " << w_J_object << "\n";
   std::cout << "J_all" << J_remapped << "\n";
+
+  std::cout << "Local: \n" << J_local << "\n";
+  std::cout << "World: \n" << w_J_object << "\n";
+  std::cout << "Aligend: \n" << J_wl << "\n";
 
 
 }

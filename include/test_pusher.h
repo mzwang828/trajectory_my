@@ -98,7 +98,7 @@ public:
       bounds.at(1) = Bounds(0.35, 0.35);
       bounds.at(2) = Bounds(0, 0);
       bounds.at(3) = Bounds(0, 0);
-      bounds.at(GetRows() - 3) = Bounds(0.53, 0.53);
+      bounds.at(GetRows() - 3) = Bounds(0.66, 0.66);
       bounds.at(GetRows() - 2) = Bounds(0, 0);
     } else if (GetName() == "velocity") {
       for (int i = 0; i < GetRows(); i++)
@@ -264,12 +264,12 @@ public:
       pinocchio::computeCollisions(model, data, geom_model, geom_data, q);
       pinocchio::computeDistances(model, data, geom_model, geom_data, q);
       hpp::fcl::DistanceResult dr = geom_data.distanceResults[cp_index];
-      Eigen::Vector3d front_normal_transformed =
+      Eigen::Vector3d front_normal_world =
           geom_data.oMg[geom_model.getGeometryId("box_0")].rotation() *
           front_normal;
       // get sign from distance normal & surface normal vector
       double distance =
-          signbit(dr.normal.transpose() * front_normal_transformed)
+          signbit(dr.normal.transpose() * front_normal_world)
               ? (-1) * dr.min_distance
               : dr.min_distance;
 
@@ -300,23 +300,27 @@ public:
       w_J_object_aligned.fill(0);
       pinocchio::computeJointJacobians(model, data_next, q_next);
       pinocchio::framesForwardKinematics(model, data_next, q_next);
-      pinocchio::getFrameJacobian(model, data_next, contactId, pinocchio::LOCAL,
+      pinocchio::getFrameJacobian(model, data_next, contactId, pinocchio::LOCAL_WORLD_ALIGNED,
                                   w_J_contact);
       pinocchio::getFrameJacobian(model, data_next, object_contactId,
-                                  pinocchio::LOCAL, w_J_object);
-      pinocchio::getFrameJacobian(model, data_next, contactId,
-                                  pinocchio::LOCAL_WORLD_ALIGNED,
-                                  w_J_contact_aligned);
-      pinocchio::getFrameJacobian(model, data_next, object_contactId,
-                                  pinocchio::LOCAL_WORLD_ALIGNED,
-                                  w_J_object_aligned);
-      w_J_contact.rightCols(1) = w_J_contact_aligned.rightCols(1);
-      w_J_object.rightCols(1) = w_J_object_aligned.rightCols(1);
+                                  pinocchio::LOCAL_WORLD_ALIGNED, w_J_object);
+      // pinocchio::getFrameJacobian(model, data_next, contactId,
+      //                             pinocchio::LOCAL_WORLD_ALIGNED,
+      //                             w_J_contact_aligned);
+      // pinocchio::getFrameJacobian(model, data_next, object_contactId,
+      //                             pinocchio::LOCAL_WORLD_ALIGNED,
+                                  // w_J_object_aligned);
+      // w_J_contact.rightCols(1) = w_J_contact_aligned.rightCols(1);
+      // w_J_object.rightCols(1) = w_J_object_aligned.rightCols(1);
+
       // Jacobian mapping exforce to both robot and object
       // Be careful to the sign!!! Different for pusher and box!
-      pinocchio::Data::Matrix6x J_final = -1 * w_J_contact + w_J_object;
+      // pinocchio::Data::Matrix6x J_final = -1 * w_J_contact + w_J_object;
       Eigen::VectorXd J_remapped(model.nv);
-      J_remapped = J_final.topRows(3).transpose() * dr.normal;
+      // J_remapped = J_final.topRows(3).transpose() * front_normal_transformed;
+      J_remapped = -1 * w_J_contact.topRows(3).transpose() * 
+                  geom_data.oMg[geom_model.getGeometryId("tip_0")].rotation().transpose() * 
+                  front_normal_world + w_J_object.topRows(3).transpose() * front_normal;
 
       // Calculate NLE, inertial matrix
       pinocchio::nonLinearEffects(model, data_next, q_next,
@@ -410,7 +414,13 @@ public:
   }
 
   void FillJacobianBlock(std::string var_set,
-                         Jacobian &jac_block) const override {}
+                         Jacobian &jac_block) const override {
+    pinocchio::Data data_next(model);
+    VectorXd pos = GetVariables()->GetComponent("position")->GetValues();
+    VectorXd vel = GetVariables()->GetComponent("velocity")->GetValues();
+    VectorXd torque = GetVariables()->GetComponent("torque")->GetValues();
+    std::vector<T> triplet_pos, triplet_vel, triplet_tau;
+  }
 };
 
 class ExCost : public CostTerm {
