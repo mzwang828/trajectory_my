@@ -26,6 +26,7 @@ int main()
   // FRICTION
   // nlp.AddVariableSet  (std::make_shared<ExVariables>(2*nsteps-2, "friction"));
   // nlp.AddVariableSet  (std::make_shared<ExVariables>(nsteps-1, "v_slack"));
+  // nlp.AddVariableSet  (std::make_shared<ExVariables>(nsteps-1, "z_slack"));
   //////////////////////////////////////////////////////////////////////////////
 
   nlp.AddConstraintSet(std::make_shared<ExConstraint>(2*ndof*(nsteps-1)+3*(nsteps-1)));

@@ -244,6 +244,18 @@ int main(int argc, char ** argv)
   std::cout << "World: \n" << w_J_object << "\n";
   std::cout << "Aligend: \n" << J_wl << "\n";
 
+  Eigen::VectorXd v(4), tau(4);
+  v << 1,1,1,0;
+  tau << 1,0,0,0;
+  computeABADerivatives(model, data, q, v, tau);
 
+  std::cout << "check Minv: " <<  data.Minv << "\n";
+
+  typedef PINOCCHIO_ALIGNED_STD_VECTOR(Force) ForceVector;
+  ForceVector fext(1);
+  for(ForceVector::iterator it = fext.begin(); it != fext.end(); ++it)
+    (*it).setRandom();
+
+  std::cout << fext[0] << "\n";
 }
 
