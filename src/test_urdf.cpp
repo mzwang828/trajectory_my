@@ -168,7 +168,7 @@ int main(int argc, char ** argv)
   GeometryData geom_data(geom_model);
   Eigen::VectorXd q = randomConfiguration(model);
 
-  q << 0, 1.0, 1.2, cos(0.52), sin(0.52);
+  q << 0, 1.0, 1.2, cos(0), sin(0);
   // forwardKinematics(model,data,q);
   // updateFramePlacements(model,data);
   // pinocchio::SE3 joint_frame_placement = data.oMf[model.getFrameId("base_to_pusher")];
@@ -252,10 +252,24 @@ int main(int argc, char ** argv)
   std::cout << "check Minv: " <<  data.Minv << "\n";
 
   typedef PINOCCHIO_ALIGNED_STD_VECTOR(Force) ForceVector;
-  ForceVector fext(1);
-  for(ForceVector::iterator it = fext.begin(); it != fext.end(); ++it)
-    (*it).setRandom();
 
-  std::cout << fext[0] << "\n";
+  std::cout << "joint number: " << model.njoints << "\n";
+
+  PINOCCHIO_ALIGNED_STD_VECTOR(pinocchio::Force) fext((size_t)model.njoints, pinocchio::Force::Zero());
+
+  pinocchio::Force::Vector3 f1 = pinocchio::Force::Vector3::Zero();
+  pinocchio::Force::Vector3 f2 = pinocchio::Force::Vector3::Zero();
+  f1[0] = -1;
+  f2[0] = 1;
+  fext[1].linear(f1);
+  fext[2].linear(f2);
+  std::cout << "fext 1: " << fext[1] << "\n";
+  std::cout << "fext 2: " << fext[2] << "\n"; 
+  pinocchio::computeABADerivatives(model, data, q, v, tau, fext);
+  std::cout << "ddq_dq: \n" << data.ddq_dq << "\n";
+  std::cout << "ddq_dv: \n" << data.ddq_dv << "\n";
+
+  std::cout << "joint1 check: \n" << model.joints[1];
+  std::cout << "joint2 check: \n" << model.joints[2];
+  
 }
-

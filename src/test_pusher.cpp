@@ -83,6 +83,4 @@ int main()
   std::cout << "eF: \n" << F << std::endl;
   std::cout << "distance_slack: \n" << d_slack << std::endl;
   std::cout << "force_slack: \n" << f_slack << std::endl;
-
-  
 }

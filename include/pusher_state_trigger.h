@@ -160,7 +160,6 @@ public:
   pinocchio::FrameIndex contactId, object_contactId;
   Eigen::Vector3d front_normal; // normal vector point to the front plane
   mutable Eigen::MatrixXd J_remapped; // used to save calculated Jacobians for exforce
-  mutable Eigen::MatrixXd fext_value; // used to save fext values for each joint
   // Input Mapping & Friction
   Eigen::Vector4d B, f;
   int n_dof;                    // number of freedom
@@ -217,7 +216,6 @@ public:
     n_step = params["n_step"].as<int>();
     t_step = params["t_step"].as<double>();
     J_remapped.resize(n_dof, n_step - 1);
-    fext_value.resize(2, n_step - 1);
   }
 
   void setRootJointBounds(pinocchio::Model &model,
@@ -356,9 +354,6 @@ public:
           Minv * (data_next.nle - B * effort(i + 1) -
           J_remapped.col(i) * exforce(i + 1) + f * tanh(20 * vel(n_dof * (i) + 1)));
 
-      fext_value(0, i) = (geom_data.oMg[geom_model.getGeometryId("tip_0")].rotation().transpose() * 
-                  front_normal_world * exforce(i + 1))(0);
-      fext_value(1, i) = exforce(i + 1);
       // Complimentary friction////////////////
       // Eigen::Vector4d friction_pos(0.0, friction(i), 0, 0);
       // Eigen::Vector4d friction_neg(0.0, -friction(n_step - 1 + i), 0, 0);
@@ -423,7 +418,7 @@ public:
   }
 
   void FillJacobianBlock(std::string var_set,
-                         Jacobian &jac_block) const override {
+                         Jacobian &jac_block) const override {/*
     pinocchio::Data data_next(model);
     VectorXd pos = GetVariables()->GetComponent("position")->GetValues();
     VectorXd vel = GetVariables()->GetComponent("velocity")->GetValues();
@@ -438,24 +433,13 @@ public:
       q_next.segment(0, n_dof - 1) = pos.segment(n_dof * (i + 1), n_dof - 1);
       q_next(model.nq - 2) = cos(pos(n_dof * (i + 1) + n_dof - 1));
       q_next(model.nq - 1) = sin(pos(n_dof * (i + 1) + n_dof - 1));
-
-      PINOCCHIO_ALIGNED_STD_VECTOR(pinocchio::Force) fext((size_t)model.njoints, pinocchio::Force::Zero());
-      pinocchio::Force::Vector3 f1 = pinocchio::Force::Vector3::Zero();
-      pinocchio::Force::Vector3 f2 = pinocchio::Force::Vector3::Zero();
-      f1[0] = fext_value(0,i);
-      f2[0] = -fext_value(1,i);
-      fext[1].linear(f1);
-      fext[2].linear(f2);
-
       pinocchio::computeABADerivatives(model, data_next,
                                        q_next,
                                        vel.segment(n_dof * (i + 1), n_dof),
-                                       B * effort.segment(n_control * (i + 1), n_control),
-                                       fext);
+                                       B * effort.segment(n_control * (i + 1), n_control));
       Eigen::MatrixXd Minv = data_next.Minv;
       Minv.triangularView<Eigen::StrictlyLower>() =
           Minv.transpose().triangularView<Eigen::StrictlyLower>();
-        
 
       // construct the triplet list for 5 sparse matrix (the 5 Jacobian,
       // corresponding to 5 constraint sets)
@@ -465,41 +449,41 @@ public:
           triplet_pos.push_back(T(n_dof * i + j, n_dof * i + j, 1)); // dq_dq_k
           triplet_pos.push_back(
               T(n_dof * i + j, n_dof * i + j + n_dof, -1)); // dq_dq_k+1
-          for (int k = 0; k < n_dof; k++) {
-            triplet_pos.push_back(T(n_dof * (n_step - 1 + i) + j,
-                                    n_dof * i + n_dof + k,
-                                    -data_next.ddq_dq(j, k))); // ddq_dq_k+1
-          }
+          // for (int k = 0; k < n_dof; k++) {
+          //   triplet_pos.push_back(T(n_dof * (n_step - 1 + i) + j,
+          //                           n_dof * i + n_dof + k,
+          //                           -data_next.ddq_dq(j, k))); // ddq_dq_k+1
+          // }
         }
         if (var_set == "velocity") {
           // Triplet for velocity
           triplet_vel.push_back(
               T(n_dof * i + j, n_dof * i + j + n_dof, t_step)); // dq_dv_k+1
-          triplet_vel.push_back(T(n_dof * (n_step - 1 + i) + j, n_dof * i + j,
-                                  -1.0 / t_step)); // ddq_dv_k
-          triplet_vel.push_back(T(n_dof * (n_step - 1 + i) + j,
-                                  n_dof * i + j + n_dof,
-                                  1.0 / t_step)); // ddq_dv_k+1
-          for (int k = 0; k < n_dof; k++) {
-            triplet_vel.push_back(T(n_dof * (n_step - 1 + i) + j,
-                                    n_dof * i + n_dof + k,
-                                    -data_next.ddq_dv(j, k))); // ddq_dv_k+1
-          }
+          // triplet_vel.push_back(T(n_dof * (n_step - 1 + i) + j, n_dof * i + j,
+          //                         -1.0 / t_step)); // ddq_dv_k
+          // triplet_vel.push_back(T(n_dof * (n_step - 1 + i) + j,
+          //                         n_dof * i + j + n_dof,
+          //                         1.0 / t_step)); // ddq_dv_k+1
+          // for (int k = 0; k < n_dof; k++) {
+          //   triplet_vel.push_back(T(n_dof * (n_step - 1 + i) + j,
+          //                           n_dof * i + n_dof + k,
+          //                           -data_next.ddq_dv(j, k))); // ddq_dv_k+1
+          // }
         }
         if (var_set == "effort") {
           // Triplet for torque
-          for (int k = 0; k < n_control; k++) {
-            triplet_tau.push_back(T(n_dof * (n_step - 1 + i) + j,
-                                    n_control * i + n_control + k,
-                                    (-Minv * B)(j, k))); // ddq_dt_k+1
-          }
+          // for (int k = 0; k < n_control; k++) {
+          //   triplet_tau.push_back(T(n_dof * (n_step - 1 + i) + j,
+          //                           n_control * i + n_control + k,
+          //                           (-Minv * B)(j, k))); // ddq_dt_k+1
+          // }
         }
         if (var_set == "exforce") {
-          for (int k = 0; k < n_exforce; k++) {
-            triplet_exforce.push_back(T(n_dof * (n_step - 1 + i) + j,
-                                        n_exforce * i + n_exforce + k,
-                                        (-Minv * J_remapped.col(i))(j)));
-          }
+          // for (int k = 0; k < n_exforce; k++) {
+          //   triplet_exforce.push_back(T(n_dof * (n_step - 1 + i) + j,
+          //                               n_exforce * i + n_exforce + k,
+          //                               (-Minv * J_remapped.col(i))(j)));
+          // }
         }
       }
       if (var_set == "exforce") {
@@ -526,7 +510,7 @@ public:
     if (var_set == "slack") {
       jac_block.setFromTriplets(triplet_slack.begin(), triplet_slack.end());
     }
-  }
+  */}
 };
 
 class ExCost : public CostTerm {
@@ -559,7 +543,7 @@ public:
     return cost;
   };
 
-    void FillJacobianBlock(std::string var_set, Jacobian &jac) const override {
+    void FillJacobianBlock(std::string var_set, Jacobian &jac) const override {/*
     if (var_set == "effort"){
       VectorXd torque = GetVariables()->GetComponent("effort")->GetValues();
       int n = GetVariables()->GetComponent("effort")->GetRows();
@@ -571,7 +555,7 @@ public:
       triplet_cost.push_back(T(0,n-1,torque(n-1)));
       jac.setFromTriplets(triplet_cost.begin(), triplet_cost.end());
     }
-  }
+  */}
 };
 
 } // namespace ifopt
