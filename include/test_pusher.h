@@ -356,7 +356,7 @@ public:
           Minv * (data_next.nle - B * effort(i + 1) -
           J_remapped.col(i) * exforce(i + 1) + f * tanh(20 * vel(n_dof * (i) + 1)));
 
-      fext_value(0, i) = (geom_data.oMg[geom_model.getGeometryId("tip_0")].rotation().transpose() * 
+      fext_value(0, i) = (data_next.oMi[model.getJointId("base_to_pusher")].rotation().transpose() * 
                   front_normal_world * exforce(i + 1))(0);
       fext_value(1, i) = exforce(i + 1);
       // Complimentary friction////////////////
