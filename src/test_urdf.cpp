@@ -113,6 +113,8 @@ int main(int argc, char ** argv)
     PINOCCHIO_MODEL_DIR + std::string("/srdf/pusher.srdf");
   const std::string box_filename =
       PINOCCHIO_MODEL_DIR + std::string("/urdf/box.urdf");
+  const std::string ur_filename =
+      PINOCCHIO_MODEL_DIR + std::string("/urdf/ur5_robot.urdf");
   
   // Load the robot urdf model
   Model robot_model, box_model, model;
@@ -168,7 +170,7 @@ int main(int argc, char ** argv)
   GeometryData geom_data(geom_model);
   Eigen::VectorXd q = randomConfiguration(model);
 
-  q << 0, 1.0, 1.2, cos(0), sin(0);
+  q << 0, 1.0, 1.2, cos(0.52), sin(0.52);
   // forwardKinematics(model,data,q);
   // updateFramePlacements(model,data);
   // pinocchio::SE3 joint_frame_placement = data.oMf[model.getFrameId("base_to_pusher")];
@@ -206,6 +208,7 @@ int main(int argc, char ** argv)
   pinocchio::SE3 root_joint_frame_placement = data.oMf[model.getFrameId("box_root_joint")];
   model.frames[contactId].placement.translation() = joint_frame_placement.inverse().act(dr.nearest_points[0]);
   model.frames[object_contactId].placement.translation() = root_joint_frame_placement.inverse().act(dr.nearest_points[1]);
+  Eigen::Vector3d r_com_contact = root_joint_frame_placement.inverse().act(dr.nearest_points[1]);
   std::cout << "point on box: " << root_joint_frame_placement.inverse().act(dr.nearest_points[1]).transpose() << "\n";
 
   pinocchio::Data::Matrix6x w_J_contact(6, model.nv), w_J_object(6, model.nv), J_local(6, model.nv), J_wl(6, model.nv);
@@ -257,6 +260,16 @@ int main(int argc, char ** argv)
 
   PINOCCHIO_ALIGNED_STD_VECTOR(pinocchio::Force) fext((size_t)model.njoints, pinocchio::Force::Zero());
 
+  Eigen::MatrixXd screw_transform;
+  screw_transform.resize(6,3);
+  screw_transform.topRows(3).setIdentity();
+  screw_transform.bottomRows(3) << 0, -r_com_contact(2), r_com_contact(1), 
+                                   r_com_contact(2), 0, -r_com_contact(0),
+                                  -r_com_contact(1), r_com_contact(0), 0;
+  Eigen::Vector3d normal(1,0,0);
+  std::cout << "check screw: \n" << screw_transform << "\n";
+  std::cout << "check force:  " << screw_transform * normal << "\n";
+
   pinocchio::Force::Vector3 f1 = pinocchio::Force::Vector3::Zero();
   pinocchio::Force::Vector3 f2 = pinocchio::Force::Vector3::Zero();
   f1[0] = -1;
@@ -272,4 +285,32 @@ int main(int argc, char ** argv)
   std::cout << "joint1 check: \n" << model.joints[1];
   std::cout << "joint2 check: \n" << model.joints[2];
   
+
+  // std::cout << "------------------------------\n";
+  // Model urmodel;
+  // pinocchio::urdf::buildModel(ur_filename, urmodel);
+  // Eigen::VectorXd urq = randomConfiguration(urmodel);
+  // Data urdata(urmodel);
+  // Eigen::VectorXd urv(6);
+  // //derivative test
+  // computeAllTerms(urmodel, urdata, urq, urv);
+  // Eigen::VectorXd urtau(6);
+  // urq << 0.5, 0.2, 0.5, 0.2, 0.2, 0.3;
+  // urv << 0.1,0.1,0.1,0.1,0.1,0.1;
+  // urtau << 2,2,2,2,2,2;
+  // computeMinverse(urmodel, urdata, urq);
+  // Eigen::MatrixXd M = urdata.M;
+  // Eigen::MatrixXd Minv = urdata.Minv;
+  // M.triangularView<Eigen::StrictlyLower>() = M.transpose().triangularView<Eigen::StrictlyLower>();
+  // Minv.triangularView<Eigen::StrictlyLower>() = Minv.transpose().triangularView<Eigen::StrictlyLower>();
+  // std::cout << "check m1: \n" << M << "\n";
+  // std::cout << "check minv1 : \n" << Minv << "\n";
+  // std::cout << "multiplication: \n " << M * Minv << "\n";
+  // computeABADerivatives(urmodel, urdata, urq, urv, urtau);
+  // std::cout << "check if nle: " << urdata.nle << "\n";
+  // std::cout << "check derivative ddq_dq: " << urdata.ddq_dq<< "\n";
+  // std::cout << "check derivative ddq_dv: " << urdata.ddq_dv << "\n";
+  // std::cout << "check m: \n" << urdata.M << "\n";
+  // std::cout << "check derivative minv: \n" << urdata.Minv << "\n";
+  // std::cout << "multiplication: \n " << M * urdata.Minv << "\n";
 }
