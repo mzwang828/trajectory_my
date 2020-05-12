@@ -114,7 +114,7 @@ int main(int argc, char ** argv)
   const std::string box_filename =
       PINOCCHIO_MODEL_DIR + std::string("/urdf/box.urdf");
   const std::string ur_filename =
-      PINOCCHIO_MODEL_DIR + std::string("/urdf/ur5_robot.urdf");
+      PINOCCHIO_MODEL_DIR + std::string("/urdf/ur3e_robot.urdf");
   
   // Load the robot urdf model
   Model robot_model, box_model, model;
@@ -128,8 +128,8 @@ int main(int argc, char ** argv)
   // pinocchio::JointIndex joint_index = model.joints.size();
   // pinocchio::FrameIndex frame_index = model.nframes;
   // load the box urdf model
-  // pinocchio::urdf::buildModel(box_filename, JointModelPlanar(), model);
   pinocchio::urdf::buildModel(box_filename, JointModelPlanar(), box_model);
+  // pinocchio::urdf::buildModel(box_filename, JointModelFreeFlyer(), box_model);
   setRootJointBounds(box_model, 1, "planar"); // root joint is with joint_index 1
   box_model.frames[1].name = "box_root_joint"; // index of root joint is 1. 0 = universe
   box_model.names[1] = "box_root_joint";
@@ -170,7 +170,7 @@ int main(int argc, char ** argv)
   GeometryData geom_data(geom_model);
   Eigen::VectorXd q = randomConfiguration(model);
 
-  q << 0, 1.0, 1.2, cos(0.52), sin(0.52);
+  q << 0, 1.0, 0, cos(0.0), sin(0.0);
   // forwardKinematics(model,data,q);
   // updateFramePlacements(model,data);
   // pinocchio::SE3 joint_frame_placement = data.oMf[model.getFrameId("base_to_pusher")];
@@ -247,9 +247,10 @@ int main(int argc, char ** argv)
   std::cout << "World: \n" << w_J_object << "\n";
   std::cout << "Aligend: \n" << J_wl << "\n";
 
-  Eigen::VectorXd v(4), tau(4);
-  v << 1,1,1,0;
-  tau << 1,0,0,0;
+  // Eigen::VectorXd v(4), tau(4);
+  Eigen::VectorXd v = Eigen::VectorXd::Random(model.nv);
+  Eigen::VectorXd tau = Eigen::VectorXd::Random(model.nv);
+
   computeABADerivatives(model, data, q, v, tau);
 
   std::cout << "check Minv: " <<  data.Minv << "\n";
@@ -278,6 +279,13 @@ int main(int argc, char ** argv)
   fext[2].linear(f2);
   std::cout << "fext 1: " << fext[1] << "\n";
   std::cout << "fext 2: " << fext[2] << "\n"; 
+  // q << 0,1,0,cos(0), sin(0);
+  // std::cout << "q : " << q.transpose() << "\n";
+  // v << 0,0,0,0;
+  std::cout << "v: " << v.transpose() << "\n";
+  tau << -1,1,0,0;
+  aba(model, data, q, v, tau, fext);
+  std::cout << "check acceleration: " << data.ddq.transpose() << "\n";
   pinocchio::computeABADerivatives(model, data, q, v, tau, fext);
   std::cout << "ddq_dq: \n" << data.ddq_dq << "\n";
   std::cout << "ddq_dv: \n" << data.ddq_dv << "\n";
@@ -286,31 +294,62 @@ int main(int argc, char ** argv)
   std::cout << "joint2 check: \n" << model.joints[2];
   
 
-  // std::cout << "------------------------------\n";
-  // Model urmodel;
-  // pinocchio::urdf::buildModel(ur_filename, urmodel);
-  // Eigen::VectorXd urq = randomConfiguration(urmodel);
-  // Data urdata(urmodel);
-  // Eigen::VectorXd urv(6);
-  // //derivative test
-  // computeAllTerms(urmodel, urdata, urq, urv);
-  // Eigen::VectorXd urtau(6);
-  // urq << 0.5, 0.2, 0.5, 0.2, 0.2, 0.3;
-  // urv << 0.1,0.1,0.1,0.1,0.1,0.1;
-  // urtau << 2,2,2,2,2,2;
-  // computeMinverse(urmodel, urdata, urq);
-  // Eigen::MatrixXd M = urdata.M;
-  // Eigen::MatrixXd Minv = urdata.Minv;
-  // M.triangularView<Eigen::StrictlyLower>() = M.transpose().triangularView<Eigen::StrictlyLower>();
-  // Minv.triangularView<Eigen::StrictlyLower>() = Minv.transpose().triangularView<Eigen::StrictlyLower>();
-  // std::cout << "check m1: \n" << M << "\n";
-  // std::cout << "check minv1 : \n" << Minv << "\n";
-  // std::cout << "multiplication: \n " << M * Minv << "\n";
-  // computeABADerivatives(urmodel, urdata, urq, urv, urtau);
+  std::cout << "------------------------------\n";
+  Model urmodel;
+  pinocchio::urdf::buildModel(ur_filename, urmodel);
+  Eigen::VectorXd urq = randomConfiguration(urmodel);
+  std::cout << urmodel << "\n";
+  Data urdata(urmodel);
+  Eigen::VectorXd urv(6);
+  //derivative test
+  computeAllTerms(urmodel, urdata, urq, urv);
+  Eigen::VectorXd urtau(6);
+  urq << 0.5, -0.47, -0.32, -1.97, 0.97, -0.47;
+  urv << 0.1,0.1,0.1,0.1,0.1,0.1;
+  urtau << 0,0,0,0,0,0;
+  std::cout << "check joints: " << urmodel.njoints << "\n";
+  PINOCCHIO_ALIGNED_STD_VECTOR(pinocchio::Force) urfext((size_t)urmodel.njoints, pinocchio::Force::Zero());
+  pinocchio::Force::Vector3 tz = pinocchio::Force::Vector3::Zero();
+  pinocchio::Force::Vector3 ty = pinocchio::Force::Vector3::Zero();
+  ty[0] = 0.1;
+  tz[2] = 0.8;
+  std::cout << "check force: \n";
+  for (pinocchio::Force f : urfext) std::cout << f << "\n"; 
+  computeMinverse(urmodel, urdata, urq);
+  Eigen::MatrixXd M = urdata.M;
+  Eigen::MatrixXd Minv = urdata.Minv;
+  M.triangularView<Eigen::StrictlyLower>() = M.transpose().triangularView<Eigen::StrictlyLower>();
+  Minv.triangularView<Eigen::StrictlyLower>() = Minv.transpose().triangularView<Eigen::StrictlyLower>();
+  std::cout << "check m1: \n" << M << "\n";
+  std::cout << "check minv1 : \n" << Minv << "\n";
+  std::cout << "multiplication: \n " << M * Minv << "\n";
+  aba(urmodel, urdata, urq, urv, urtau);
+  std::cout << "check acceleration: " << urdata.ddq.transpose() << "\n";
+  computeABADerivatives(urmodel, urdata, urq, urv, urtau);
   // std::cout << "check if nle: " << urdata.nle << "\n";
-  // std::cout << "check derivative ddq_dq: " << urdata.ddq_dq<< "\n";
-  // std::cout << "check derivative ddq_dv: " << urdata.ddq_dv << "\n";
+  // std::cout << "check derivative ddq_dq: \n" << urdata.ddq_dq<< "\n";
+  // std::cout << "check derivative ddq_dv: \n" << urdata.ddq_dv << "\n";
   // std::cout << "check m: \n" << urdata.M << "\n";
   // std::cout << "check derivative minv: \n" << urdata.Minv << "\n";
   // std::cout << "multiplication: \n " << M * urdata.Minv << "\n";
+
+  urtau << 0.0,0.0,0.0,0.0,0.0,0.1;
+  std::cout << "tau: " << urtau.transpose() << "\n";
+  aba(urmodel, urdata, urq, urv, urtau, urfext);
+  std::cout << "acceleration with tau: " << urdata.ddq.transpose() << "\n";
+  // computeABADerivatives(urmodel, urdata, urq, urv, urtau);
+  std::cout << "check derivative ddq_dq: \n" << urdata.ddq_dq<< "\n";
+  // std::cout << "check derivative ddq_dv: \n" << urdata.ddq_dv << "\n";
+
+  // urfext[1].angular(tz);
+  // urfext[2].angular(ty);
+  urfext[6].angular(ty);
+  for (pinocchio::Force f : urfext) std::cout << f << "\n"; 
+  urtau << 0,0,0,0,0,0;
+  aba(urmodel, urdata, urq, urv, urtau, urfext);
+  std::cout << "acceleration with fext: " << urdata.ddq.transpose() << "\n";
+  // computeABADerivatives(urmodel, urdata, urq, urv, urtau, urfext);
+  std::cout << "check derivative ddq_dq: \n" << urdata.ddq_dq<< "\n";
+  // std::cout << "check derivative ddq_dv: \n" << urdata.ddq_dv << "\n";
+  
 }

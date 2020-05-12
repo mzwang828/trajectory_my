@@ -20,7 +20,7 @@ int main()
   nlp.AddVariableSet  (std::make_shared<ExVariables>(ndof*nsteps, "torque"));
 
   nlp.AddConstraintSet(std::make_shared<ExConstraint>(2*ndof*(nsteps-1)));
-  // nlp.AddConstraintSet(std::make_shared<EndEffectorConstraint>(3));
+  nlp.AddConstraintSet(std::make_shared<EndEffectorConstraint>(3));
   nlp.AddCostSet      (std::make_shared<ExCost>());
   nlp.PrintCurrent();
 

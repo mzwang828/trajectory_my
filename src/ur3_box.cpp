@@ -2,7 +2,7 @@
 #include <fstream>
 #include <ifopt/problem.h>
 #include <ifopt/snopt_solver.h>
-#include "test_pusher.h"
+#include "ur3_box_problem.h"
 #include <yaml-cpp/yaml.h>
 
 using namespace ifopt;
@@ -23,15 +23,8 @@ int main()
   nlp.AddVariableSet  (std::make_shared<ExVariables>(n_control*nsteps, "effort"));
   nlp.AddVariableSet  (std::make_shared<ExVariables>(n_exforce*nsteps, "exforce"));
   nlp.AddVariableSet  (std::make_shared<ExVariables>(2*nsteps-2, "slack"));
-  // nlp.AddVariableSet  (std::make_shared<ExVariables>(nsteps-1, "aux"));
-  // FRICTION
-  // nlp.AddVariableSet  (std::make_shared<ExVariables>(2*nsteps-2, "friction"));
-  // nlp.AddVariableSet  (std::make_shared<ExVariables>(nsteps-1, "v_slack"));
-  // nlp.AddVariableSet  (std::make_shared<ExVariables>(nsteps-1, "z_slack"));
-  //////////////////////////////////////////////////////////////////////////////
 
   nlp.AddConstraintSet(std::make_shared<ExConstraint>(2*ndof*(nsteps-1)+3*(nsteps-1)));
-  // nlp.AddConstraintSet(std::make_shared<ExConstraint>(2*ndof*(nsteps-1)+9*(nsteps-1)));
   nlp.AddCostSet      (std::make_shared<ExCost>());
   nlp.PrintCurrent();
 

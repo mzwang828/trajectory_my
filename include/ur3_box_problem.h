@@ -45,6 +45,14 @@ public:
   // set.
   ExVariables(int n) : ExVariables(n, "var_set1"){};
   ExVariables(int n, const std::string &name) : VariableSet(n, name) {
+    YAML::Node params = YAML::LoadFile(
+        "/home/mzwang/catkin_ws/src/trajectory_my/Config/params.yaml");
+    n_dof = params["n_dof"].as<int>();
+    n_control = params["n_control"].as<int>();
+    n_exforce = params["n_exforce"].as<int>();
+    n_step = params["n_step"].as<int>();
+    t_step = params["t_step"].as<double>();
+
     xvar = Eigen::VectorXd::Zero(n);
     // the initial values where the NLP starts iterating from
     if (name == "position") {
@@ -65,17 +73,6 @@ public:
         xvar(n / 2 + i) = 1;
       }
     }
-    // FOR FRICTION
-    // else if (name == "friction") {
-    //   for (int i = 0; i < n; i++)
-    //     xvar(i) = 0;
-    // } else if (name == "v_slack") {
-    //   for (int i = 0; i < n; i++)
-    //     xvar(i) = 0;
-    // } else if (name == "z_slack") {
-    //   for (int i = 0; i < n; i++)
-    //     xvar(i) = 0.5;
-    // }
   }
 
   // Here is where you can transform the Eigen::Vector into whatever
@@ -95,21 +92,24 @@ public:
     VecBound bounds(GetRows());
     if (GetName() == "position") {
       for (int i = 0; i < GetRows(); i++)
-        bounds.at(i) = Bounds(-5, 5);
-      for (int i = 0; i < GetRows(); i = i + 4)
-        bounds.at(i) = Bounds(-0.05, 1.0);
+        bounds.at(i) = Bounds(-position_lim, position_lim);
       bounds.at(0) = Bounds(0, 0);
-      bounds.at(1) = Bounds(0.35, 0.35);
+      bounds.at(1) = Bounds(0, 0);
       bounds.at(2) = Bounds(0, 0);
       bounds.at(3) = Bounds(0, 0);
-      bounds.at(GetRows() - 3) = Bounds(0.56, 0.56);
-      bounds.at(GetRows() - 2) = Bounds(0, 0);
+      bounds.at(4) = Bounds(0, 0);
+      bounds.at(5) = Bounds(0, 0);
+      bounds.at(6) = Bounds(0.50, 0.50);
+      bounds.at(7) = Bounds(0.3, 0.3);
+      bounds.at(8) = Bounds(0, 0);
+      bounds.at(GetRows() - 3) = Bounds(0.66, 0.66);
+      bounds.at(GetRows() - 2) = Bounds(0.3, 0.3);
     } else if (GetName() == "velocity") {
       for (int i = 0; i < GetRows(); i++)
         bounds.at(i) = Bounds(-velocity_lim, velocity_lim);
-      for (int i = 0; i < 4; i++)
+      for (int i = 0; i < n_dof; i++)
         bounds.at(i) = Bounds(0, 0);
-      for (int i = GetRows() - 4; i < GetRows(); i++)
+      for (int i = GetRows() - n_dof; i < GetRows(); i++)
         bounds.at(i) = Bounds(0, 0);
     } else if (GetName() == "effort") {
       for (int i = 0; i < GetRows(); i++)
@@ -123,23 +123,17 @@ public:
         bounds.at(GetRows() / 2 + i) = Bounds(0, force_lim); // force slack
       }
     }
-    // FOR FRICTION
-    // else if (GetName() == "friction") {
-    //   for (int i = 0; i < GetRows(); i++)
-    //     bounds.at(i) = Bounds(0, inf);
-    // } else if (GetName() == "v_slack") {
-    //   for (int i = 0; i < GetRows(); i++)
-    //     bounds.at(i) = Bounds(0, inf);
-    // } else if (GetName() == "z_slack") {
-    //   for (int i = 0; i < GetRows(); i++)
-    //     bounds.at(i) = Bounds(0.5, 0.5);
-    // }
     return bounds;
   }
 
 private:
   Eigen::VectorXd xvar;
-  double position_lim = 5;
+  int n_dof;                    // number of freedom
+  int n_control;                // number of control
+  int n_exforce;                // number of external force
+  int n_step;                   // number of steps or (knot points - 1)
+  double t_step;                // length of each step
+  double position_lim = 3.14;
   double velocity_lim = 5;
   double effort_lim = 100;
   double force_lim = 100;
@@ -148,10 +142,8 @@ private:
 // system dynamics constraints
 class ExConstraint : public ConstraintSet {
 public:
-  const std::string urdf_filename =
-      PINOCCHIO_MODEL_DIR + std::string("/urdf/pusher.urdf");
-  const std::string srdf_filename =
-      PINOCCHIO_MODEL_DIR + std::string("/srdf/pusher.srdf");
+  const std::string robot_filename =
+      PINOCCHIO_MODEL_DIR + std::string("/urdf/ur3e_robot_abs.urdf");
   const std::string box_filename =
       PINOCCHIO_MODEL_DIR + std::string("/urdf/box.urdf");
 
@@ -163,7 +155,8 @@ public:
   mutable Eigen::MatrixXd J_remapped; // used to save calculated Jacobians for exforce
   mutable Eigen::MatrixXd fext_value; // used to save fext values for each joint
   // Input Mapping & Friction
-  Eigen::Vector4d B, f;
+  Eigen::MatrixXd B;
+  Eigen::VectorXd f;
   int n_dof;                    // number of freedom
   int n_control;                // number of control
   int n_exforce;                // number of external force
@@ -173,10 +166,8 @@ public:
   ExConstraint(int n) : ExConstraint(n, "constraint1") {}
   ExConstraint(int n, const std::string &name) : ConstraintSet(n, name) {
     front_normal << 1, 0, 0;
-    B << 1.0, 0, 0, 0;
-    f << 0.0, 0.5, 0.0, 0.0;  
     // build the pusher model
-    pinocchio::urdf::buildModel(urdf_filename, robot_model);
+    pinocchio::urdf::buildModel(robot_filename, robot_model);
     // build the box model
     pinocchio::urdf::buildModel(box_filename, pinocchio::JointModelPlanar(),
                                 box_model);
@@ -191,20 +182,20 @@ public:
     // add virtual contact point frame for Jacobian calculation
     // add as many as needed
     contactId = model.addFrame(
-        pinocchio::Frame("contactPoint", model.getJointId("base_to_pusher"), -1,
+        pinocchio::Frame("contactPoint", model.getJointId("wrist_3_joint"), -1,
                          pinocchio::SE3::Identity(), pinocchio::OP_FRAME));
     object_contactId = model.addFrame(pinocchio::Frame(
         "object_contactPoint", model.getJointId("box_root_joint"), -1,
         pinocchio::SE3::Identity(), pinocchio::OP_FRAME));
     // build the geometry model
-    pinocchio::urdf::buildGeom(model, urdf_filename, pinocchio::COLLISION,
+    pinocchio::urdf::buildGeom(model, robot_filename, pinocchio::COLLISION,
                                geom_model, PINOCCHIO_MODEL_DIR);
     pinocchio::urdf::buildGeom(model, box_filename, pinocchio::COLLISION,
                                box_geom_model, PINOCCHIO_MODEL_DIR);
     pinocchio::appendGeometryModel(geom_model, box_geom_model);
 
     // define the potential collision pair, as many as needed
-    pinocchio::GeomIndex tip_id = geom_model.getGeometryId("tip_0");
+    pinocchio::GeomIndex tip_id = geom_model.getGeometryId("ee_link_0");
     pinocchio::GeomIndex front_id = geom_model.getGeometryId("obj_front_0");
     pinocchio::CollisionPair cp = pinocchio::CollisionPair(tip_id, front_id);
     geom_model.addCollisionPair(cp);
@@ -219,6 +210,12 @@ public:
     t_step = params["t_step"].as<double>();
     J_remapped.resize(n_dof, n_step - 1);
     fext_value.resize(3, n_step - 1); // force for pusher, force for box and moment for box
+
+    B.resize(n_dof, n_control);
+    B.setZero();
+    B.topRows(n_control).setIdentity();
+    f.resize(n_dof);
+    f << 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0;  
   }
 
   void setRootJointBounds(pinocchio::Model &model,
@@ -244,10 +241,6 @@ public:
     VectorXd effort = GetVariables()->GetComponent("effort")->GetValues();
     VectorXd exforce = GetVariables()->GetComponent("exforce")->GetValues();
     VectorXd slack = GetVariables()->GetComponent("slack")->GetValues();
-    // FOR FRICTION
-    // VectorXd friction = GetVariables()->GetComponent("friction")->GetValues(); 
-    // VectorXd v_slack = GetVariables()->GetComponent("v_slack")->GetValues();
-    // VectorXd z_slack = GetVariables()->GetComponent("z_slack")->GetValues();
 
     // set contraint for each knot point
     // constraints shape
@@ -298,7 +291,7 @@ public:
       // Get Contact Point Jacobian
       pinocchio::framesForwardKinematics(model, data_next, q_next);
       pinocchio::SE3 joint_frame_placement =
-          data_next.oMf[model.getFrameId("base_to_pusher")];
+          data_next.oMf[model.getFrameId("wrist_3_joint")];
       pinocchio::SE3 root_joint_frame_placement =
           data_next.oMf[model.getFrameId("box_root_joint")];
       model.frames[contactId].placement.translation() =
@@ -320,24 +313,6 @@ public:
                                   w_J_contact);
       pinocchio::getFrameJacobian(model, data_next, object_contactId,
                                   pinocchio::LOCAL_WORLD_ALIGNED, w_J_object);
-      // pinocchio::getFrameJacobian(model, data_next, contactId,
-      //                             pinocchio::LOCAL_WORLD_ALIGNED,
-      //                             w_J_contact_aligned);
-      // pinocchio::getFrameJacobian(model, data_next, object_contactId,
-      //                             pinocchio::LOCAL_WORLD_ALIGNED,
-                                  // w_J_object_aligned);
-      // w_J_contact.rightCols(1) = w_J_contact_aligned.rightCols(1);
-      // w_J_object.rightCols(1) = w_J_object_aligned.rightCols(1);
-
-      // Jacobian mapping exforce to both robot and object
-      // Be careful to the sign!!! Different for pusher and box!
-      // pinocchio::Data::Matrix6x J_final = -1 * w_J_contact + w_J_object;
-      // Eigen::VectorXd J_remapped(model.nv);
-      // J_remapped = J_final.topRows(3).transpose() * front_normal_transformed;
-      // J_remapped.col(i) = -1 * w_J_contact.topRows(3).transpose() * 
-      //             geom_data.oMg[geom_model.getGeometryId("tip_0")].rotation().transpose() * 
-      //             front_normal_world + w_J_object.topRows(3).transpose() * front_normal;
-
       J_remapped.col(i) = -1 * w_J_contact.topRows(3).transpose() * 
             data_next.oMf[contactId].rotation().transpose() * 
             front_normal_world + w_J_object.topRows(3).transpose() * front_normal;
@@ -359,44 +334,19 @@ public:
           1 / t_step *
               (vel.segment(n_dof * (i + 1), n_dof) -
                vel.segment(n_dof * i, n_dof)) +
-          Minv * (data_next.nle - B * effort(i + 1) -
+          Minv * (data_next.nle - B * effort.segment(n_control * (i + 1), n_control) -
           J_remapped.col(i) * exforce(i + 1) + f * tanh(20 * vel(n_dof * (i) + 1)));
 
-      // Complimentary friction////////////////
-      // Eigen::Vector4d friction_pos(0.0, friction(i), 0, 0);
-      // Eigen::Vector4d friction_neg(0.0, -friction(n_step - 1 + i), 0, 0);
-      // g.segment(n_dof * (n_step - 1 + i), n_dof) =
-      //     1 / t_step *
-      //         (vel.segment(n_dof * (i + 1), n_dof) -
-      //           vel.segment(n_dof * i, n_dof)) +
-      //     Minv * (data_next.nle - B * effort(i + 1)) -
-      //     J_remapped * exforce(i + 1) + friction_pos + friction_neg;
-
-      // g(n_dof * 2 * (n_step - 1) + 3 * (n_step - 1) + i) = v_slack(i) +
-      // vel(n_dof * (i) + 1); // Eq. (11) 
-      // g(n_dof * 2 * (n_step - 1) + 4 *
-      // (n_step - 1) + i) = v_slack(i) - vel(n_dof * (i) + 1); // Eq. (12)
-      // g(n_dof * 2 * (n_step - 1) + 5 * (n_step - 1) + i) = z_slack(i) - friction(i)
-      // - friction(n_step - 1 + i); // Eq. (10) 
-      // g(n_dof * 2 * (n_step - 1) + 6
-      // * (n_step - 1) + i) = (z_slack(i) - friction(i) - friction(n_step - 1 + i)) *
-      // v_slack(i); // Eq. (14) 
-      // g(n_dof * 2 * (n_step - 1) + 7 * (n_step - 1) +
-      // i) = (v_slack(i) + vel(n_dof * (i) + 1)) * friction(i); // Eq. (15)
-      // g(n_dof * 2 * (n_step - 1) + 8 * (n_step - 1) + i) = (v_slack(i) -
-      // vel(n_dof * (i) + 1)) * friction(n_step - 1 + i); // Eq. (16)
-      /////////////////////////////////////////
-
-      // Complementary constraints, 3 constraints for each step
+      // Contact constraints, 3 constraints for each step
       g(n_dof * 2 * (n_step - 1) + i) = distance - slack(i);
       g(n_dof * 2 * (n_step - 1) + n_step - 1 + i) =
           exforce(i + 1) - slack(n_step - 1 + i);
+      // state-trigger
+      // g(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i) =
+      //    -std::min(-slack(i), 0.0) * slack(n_step - 1 + i);
+      // complimentray
       g(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i) =
-         -std::min(-slack(i), 0.0) * slack(n_step - 1 + i);
-      // g(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i) =
-      //    -std::min(-slack(n_step - 1 + i), 0.0) * slack(i);
-      // g(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i) =
-      //    slack(i) * slack(n_step - 1 + i);
+          slack(i) * slack(n_step - 1 + i);
     }
     return g;
   };
@@ -412,19 +362,6 @@ public:
       bounds.at(n_dof * 2 * (n_step - 1) + n_step - 1 + i) = Bounds(0.0, 0.0);
       bounds.at(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i) =
           Bounds(0.0, 0.0);
-      // FRICTION
-      // bounds.at(n_dof * 2 * (n_step - 1) + 3 * (n_step - 1) + i) =
-      // Bounds(0.0, inf); // Eq. (11) 
-      // bounds.at(n_dof * 2 * (n_step - 1) + 4 *
-      // (n_step - 1) + i) = Bounds(0.0, inf); // Eq. (12) 
-      // bounds.at(n_dof * 2 *
-      // (n_step - 1) + 5 * (n_step - 1) + i) = Bounds(0.0, inf); // Eq. (10)
-      // bounds.at(n_dof * 2 * (n_step - 1) + 6 * (n_step - 1) + i) =
-      // Bounds(0.0, 0.0); // Eq. (14) 
-      // bounds.at(n_dof * 2 * (n_step - 1) + 7 *
-      // (n_step - 1) + i) = Bounds(0.0, 0.0); // Eq. (15) 
-      // bounds.at(n_dof * 2 *
-      // (n_step - 1) + 8 * (n_step - 1) + i) = Bounds(0.0, 0.0); // Eq. (16)
     }
     return bounds;
   }
@@ -452,15 +389,7 @@ public:
     Eigen::MatrixXd weight(n, n);
     weight = vec.asDiagonal();
     double cost = (torque.transpose() * weight) * torque;
-
-    YAML::Node params = YAML::LoadFile(
-        "/home/mzwang/catkin_ws/src/trajectory_my/Config/params.yaml");
-    std::vector<double> box_goal = params["box_goal"].as<std::vector<double>>();
-    // double cost = 100*(pow((box_goal[0] - pos[pos.size() - 3]), 2) +
-    // pow((box_goal[1] - pos[pos.size() - 2]), 2)); double cost =
-    // abs(box_goal[0] - pos[pos.size() - 3]) + abs(box_goal[1] - pos[pos.size()
-    // - 2]);
-
+    
     return cost;
   };
 

@@ -187,6 +187,17 @@ target_link_libraries(test_pusher
 )
 target_compile_definitions(test_pusher PRIVATE ${PINOCCHIO_CFLAGS_OTHER})
 
+# UR3
+add_executable(ur3_box src/ur3_box.cpp)
+add_dependencies(ur3_box ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+target_link_libraries(ur3_box
+  ${Boost_LIBRARIES}
+  ${catkin_LIBRARIES}
+  ${PKG_HPP_FCL_LDFLAGS}
+  yaml-cpp
+)
+target_compile_definitions(ur3_box PRIVATE ${PINOCCHIO_CFLAGS_OTHER})
+
 #############
 ## Install ##
 #############

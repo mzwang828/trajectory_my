@@ -65,12 +65,12 @@ public:
       // for (int i = GetRows() - 6; i < GetRows(); i++)
       //   bounds.at(i) = Bounds(0, 0);
 
-      bounds.at(GetRows() - 6) = Bounds(0.5, 0.5);
-      bounds.at(GetRows() - 5) = Bounds(0.0, 0.0);
-      bounds.at(GetRows() - 4) = Bounds(0.0, 0.0);
-      bounds.at(GetRows() - 3) = Bounds(0.0, 0.0);
-      bounds.at(GetRows() - 2) = Bounds(0.0, 0.0);
-      bounds.at(GetRows() - 1) = Bounds(0.0, 0.0);
+      // bounds.at(GetRows() - 6) = Bounds(0.5, 0.5);
+      // bounds.at(GetRows() - 5) = Bounds(0.0, 0.0);
+      // bounds.at(GetRows() - 4) = Bounds(0.5, 0.5);
+      // bounds.at(GetRows() - 3) = Bounds(0.0, 0.0);
+      // bounds.at(GetRows() - 2) = Bounds(0.5, 0.5);
+      // bounds.at(GetRows() - 1) = Bounds(0.0, 0.0);
       
     } else if (GetName() == "velocity") {
       for (int i = 0; i < GetRows(); i++)
@@ -96,7 +96,7 @@ private:
 class ExConstraint : public ConstraintSet {
 public:
   const std::string urdf_filename =
-      PINOCCHIO_MODEL_DIR + std::string("/ur5_robot.urdf");
+      PINOCCHIO_MODEL_DIR + std::string("/urdf/ur5_robot.urdf");
   pinocchio::Model model;
   int ndof = 6;        // number of freedom
   int nsteps = 20;     // number of steps or (knot points - 1)
@@ -242,7 +242,7 @@ public:
 class EndEffectorConstraint : public ConstraintSet {
 public:
   const std::string urdf_filename =
-      PINOCCHIO_MODEL_DIR + std::string("/ur5_robot.urdf");
+      PINOCCHIO_MODEL_DIR + std::string("/urdf/ur5_robot.urdf");
   pinocchio::Model model;
   int ndof = 6;                  // number of freedom
   int nsteps = 10;               // number of steps or (knot points - 1)
