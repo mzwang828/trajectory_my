@@ -153,7 +153,7 @@ public:
   pinocchio::FrameIndex contactId, object_contactId;
   Eigen::Vector3d front_normal; // normal vector point to the front plane
   mutable Eigen::MatrixXd J_remapped; // used to save calculated Jacobians for exforce
-  mutable Eigen::MatrixXd fext_value; // used to save fext values for each joint
+  mutable Eigen::MatrixXd fext_robot, fext_object; // used to save fext values for each joint
   // Input Mapping & Friction
   Eigen::MatrixXd B;
   Eigen::VectorXd f;
@@ -174,8 +174,7 @@ public:
     // set planar joint bounds, root joint is with joint_index 1
     setRootJointBounds(box_model, 1);
     // change box root joint name, otherwise duplicated with robot root joint
-    box_model.frames[1].name =
-        "box_root_joint"; // index of root joint is 1. 0 = universe
+    box_model.frames[1].name = "box_root_joint"; // index of root joint is 1. 0 = universe
     box_model.names[1] = "box_root_joint";
     pinocchio::appendModel(box_model, robot_model, 0,
                            pinocchio::SE3::Identity(), model);
@@ -209,7 +208,11 @@ public:
     n_step = params["n_step"].as<int>();
     t_step = params["t_step"].as<double>();
     J_remapped.resize(n_dof, n_step - 1);
-    fext_value.resize(3, n_step - 1); // force for pusher, force for box and moment for box
+    J_remapped.setZero();
+    fext_robot.resize(6, n_step - 1); // fext for robot
+    fext_robot.setZero();
+    fext_object.resize(6, n_step - 1); // fext for box
+    fext_object.setZero();
 
     B.resize(n_dof, n_control);
     B.setZero();
@@ -241,7 +244,6 @@ public:
     VectorXd effort = GetVariables()->GetComponent("effort")->GetValues();
     VectorXd exforce = GetVariables()->GetComponent("exforce")->GetValues();
     VectorXd slack = GetVariables()->GetComponent("slack")->GetValues();
-
     // set contraint for each knot point
     // constraints shape
     /////////////////////////////////////////*  *////////
@@ -287,18 +289,21 @@ public:
       pinocchio::computeDistances(model, data_next, geom_model, geom_data,
                                   q_next);
       dr = geom_data.distanceResults[cp_index];
+      front_normal_world =
+          geom_data.oMg[geom_model.getGeometryId("box_0")].rotation() *
+          front_normal;
 
       // Get Contact Point Jacobian
+      pinocchio::computeJointJacobians(model, data_next, q_next);
       pinocchio::framesForwardKinematics(model, data_next, q_next);
       pinocchio::SE3 joint_frame_placement =
           data_next.oMf[model.getFrameId("wrist_3_joint")];
       pinocchio::SE3 root_joint_frame_placement =
           data_next.oMf[model.getFrameId("box_root_joint")];
-      model.frames[contactId].placement.translation() =
-          joint_frame_placement.inverse().act(dr.nearest_points[0]);
-      model.frames[object_contactId].placement.translation() =
-          root_joint_frame_placement.inverse().act(dr.nearest_points[1]);
-      Eigen::Vector3d r_com_contact = root_joint_frame_placement.inverse().act(dr.nearest_points[1]);
+      Eigen::Vector3d robot_r_j2c = joint_frame_placement.inverse().act(dr.nearest_points[0]);
+      Eigen::Vector3d object_r_j2c = root_joint_frame_placement.inverse().act(dr.nearest_points[1]);
+      model.frames[contactId].placement.translation() = robot_r_j2c;
+      model.frames[object_contactId].placement.translation() = object_r_j2c;
 
       pinocchio::Data::Matrix6x w_J_contact(6, model.nv),
           w_J_contact_aligned(6, model.nv), w_J_object_aligned(6, model.nv),
@@ -307,8 +312,6 @@ public:
       w_J_object.fill(0);
       w_J_contact_aligned.fill(0);
       w_J_object_aligned.fill(0);
-      pinocchio::computeJointJacobians(model, data_next, q_next);
-      pinocchio::framesForwardKinematics(model, data_next, q_next);
       pinocchio::getFrameJacobian(model, data_next, contactId, pinocchio::LOCAL_WORLD_ALIGNED,
                                   w_J_contact);
       pinocchio::getFrameJacobian(model, data_next, object_contactId,
@@ -324,18 +327,52 @@ public:
       Minv.triangularView<Eigen::StrictlyLower>() =
           Minv.transpose().triangularView<Eigen::StrictlyLower>();
 
+      // Get external force in local joint frame
+      Eigen::VectorXd force_cp(3), force_ocp(3);
+      // contact force in [wrist_3_joint] frame at [contact] point
+      force_cp = -(data_next.oMi[model.getJointId("wrist_3_joint")].rotation().transpose() *
+                   front_normal_world * exforce(i + 1));
+      // Get force and moment at [joint_origin] point
+      fext_robot.col(i).head(3) = force_cp;
+      fext_robot.col(i)(3) = -robot_r_j2c(2) * force_cp(1) + robot_r_j2c(1) * force_cp(2);
+      fext_robot.col(i)(4) = robot_r_j2c(2) * force_cp(0) - robot_r_j2c(0) * force_cp(2);
+      fext_robot.col(i)(5) = -robot_r_j2c(1) * force_cp(0) + robot_r_j2c(0) * force_cp(1);
+      // contact force in [object] frame at [contact] point
+      force_ocp = front_normal * exforce(i+1);
+      fext_object.col(i).head(3) = force_ocp;
+      fext_object.col(i)(3) = -object_r_j2c(2) * force_ocp(1) + object_r_j2c(1) * force_ocp(2);
+      fext_object.col(i)(4) = object_r_j2c(2) * force_ocp(0) - object_r_j2c(0) * force_ocp(2);
+      fext_object.col(i)(5) = -object_r_j2c(1) * force_ocp(0) + object_r_j2c(0) * force_ocp(1);
+      // Calculate acceleration using Aba
+      Eigen::VectorXd effort_remap(model.nv);
+      effort_remap.setZero();
+      effort_remap = B * effort.segment(n_control * (i + 1), n_control);
+      pinocchio::Force::Vector6 fext_robot_ref = fext_robot.col(i);
+      pinocchio::Force::Vector6 fext_object_ref = fext_object.col(i);
+      PINOCCHIO_ALIGNED_STD_VECTOR(pinocchio::Force) fext((size_t)model.njoints, pinocchio::Force::Zero());
+      fext[6] = pinocchio::ForceRef<pinocchio::Force::Vector6>(fext_robot_ref);
+      fext[7] = pinocchio::ForceRef<pinocchio::Force::Vector6>(fext_object_ref);
+
+      pinocchio::aba(model, data_next, q_next, vel.segment(n_dof * (i + 1), n_dof),
+                     effort_remap, fext);
       // backward integration
       g.segment(n_dof * i, n_dof) =
           pos.segment(n_dof * i, n_dof) - pos.segment(n_dof * (i + 1), n_dof) +
           t_step * (vel.segment(n_dof * (i + 1), n_dof));
 
       // smoothed if condition
+      // g.segment(n_dof * (n_step - 1 + i), n_dof) =
+      //     1 / t_step *
+      //         (vel.segment(n_dof * (i + 1), n_dof) -
+      //          vel.segment(n_dof * i, n_dof)) +
+      //     Minv * (data_next.nle - B * effort.segment(n_control * (i + 1), n_control) -
+      //     J_remapped.col(i) * exforce(i + 1) + f * tanh(20 * vel(n_dof * (i) + 1)));
+
       g.segment(n_dof * (n_step - 1 + i), n_dof) =
           1 / t_step *
               (vel.segment(n_dof * (i + 1), n_dof) -
-               vel.segment(n_dof * i, n_dof)) +
-          Minv * (data_next.nle - B * effort.segment(n_control * (i + 1), n_control) -
-          J_remapped.col(i) * exforce(i + 1) + f * tanh(20 * vel(n_dof * (i) + 1)));
+               vel.segment(n_dof * i, n_dof)) - data_next.ddq +
+          Minv * f * tanh(20 * vel(n_dof * (i) + 1));
 
       // Contact constraints, 3 constraints for each step
       g(n_dof * 2 * (n_step - 1) + i) = distance - slack(i);
