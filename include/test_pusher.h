@@ -378,6 +378,7 @@ public:
 
       pinocchio::aba(model, data_next, q_next, vel.segment(n_dof * (i + 1), n_dof),
                      effort_remap, fext);
+
       // backward integration
       g.segment(n_dof * i, n_dof) =
           pos.segment(n_dof * i, n_dof) - pos.segment(n_dof * (i + 1), n_dof) +
@@ -486,6 +487,74 @@ public:
       PINOCCHIO_ALIGNED_STD_VECTOR(pinocchio::Force) fext((size_t)model.njoints, pinocchio::Force::Zero());
       fext[1] = pinocchio::ForceRef<pinocchio::Force::Vector6>(fext_robot_ref);
       fext[2] = pinocchio::ForceRef<pinocchio::Force::Vector6>(fext_object_ref);
+
+
+
+
+      //check derivative ddq_dq vs difference
+      // VectorXd exforce = GetVariables()->GetComponent("exforce")->GetValues();
+      // pinocchio::GeometryData geom_data(geom_model);
+      // pinocchio::aba(model, data_next, q_next, vel.segment(n_dof * (i + 1), n_dof),
+      //     effort_remap, fext);
+      // Eigen::VectorXd a0 = data_next.ddq;
+      // double alpha = 1e-8;
+      // Eigen::VectorXd v_eps(VectorXd::Zero(model.nv));
+      // Eigen::VectorXd q_plus(model.nq), a_plus(model.nv);
+      // v_eps(3) = alpha;
+      // q_plus = integrate(model,q_next,v_eps);
+      // pinocchio::computeCollisions(model, data_next, geom_model, geom_data,
+      //                              q_plus);
+      // pinocchio::computeDistances(model, data_next, geom_model, geom_data,
+      //                             q_plus);
+
+      // hpp::fcl::DistanceResult dr = geom_data.distanceResults[cp_index];
+      // Eigen::Vector3d front_normal_world =
+      //     geom_data.oMg[geom_model.getGeometryId("box_0")].rotation() *
+      //     front_normal;
+      // pinocchio::computeJointJacobians(model, data_next, q_plus);
+      // pinocchio::framesForwardKinematics(model, data_next, q_plus);
+      // pinocchio::SE3 joint_frame_placement =
+      //     data_next.oMf[model.getFrameId("base_to_pusher")];
+      // pinocchio::SE3 root_joint_frame_placement =
+      //     data_next.oMf[model.getFrameId("box_root_joint")];
+      // Eigen::Vector3d object_r_j2c = root_joint_frame_placement.inverse().act(dr.nearest_points[1]);
+      // Eigen::Vector3d robot_r_j2c = joint_frame_placement.inverse().act(dr.nearest_points[0]);
+
+      // Eigen::VectorXd force_cp(3), force_ocp(3), fext_robot_plus(6), fext_object_plus(6);
+      // force_cp = -(data_next.oMi[model.getJointId("base_to_pusher")].rotation().transpose() *
+      //              front_normal_world * exforce(i + 1));
+      // fext_robot_plus.head(3) = force_cp;
+      // fext_robot_plus(3) = -robot_r_j2c(2) * force_cp(1) + robot_r_j2c(1) * force_cp(2);
+      // fext_robot_plus(4) = robot_r_j2c(2) * force_cp(0) - robot_r_j2c(0) * force_cp(2);
+      // fext_robot_plus(5) = -robot_r_j2c(1) * force_cp(0) + robot_r_j2c(0) * force_cp(1);
+      // force_ocp = front_normal * exforce(i+1);
+      // fext_object_plus.head(3) = force_ocp;
+      // fext_object_plus(3) = -object_r_j2c(2) * force_ocp(1) + object_r_j2c(1) * force_ocp(2);
+      // fext_object_plus(4) = object_r_j2c(2) * force_ocp(0) - object_r_j2c(0) * force_ocp(2);
+      // fext_object_plus(5) = -object_r_j2c(1) * force_ocp(0) + object_r_j2c(0) * force_ocp(1);
+      // fext_robot_ref = fext_robot_plus;
+      // fext_object_ref = fext_object_plus;
+      // PINOCCHIO_ALIGNED_STD_VECTOR(pinocchio::Force) fext_plus((size_t)model.njoints, pinocchio::Force::Zero());
+      // fext_plus[1] = pinocchio::ForceRef<pinocchio::Force::Vector6>(fext_robot_ref);
+      // fext_plus[2] = pinocchio::ForceRef<pinocchio::Force::Vector6>(fext_object_ref);
+      
+      // a_plus = pinocchio::aba(model, data_next, q_plus, vel.segment(n_dof * (i + 1), n_dof),
+      //          effort_remap, fext_plus);
+      // v_eps(3) = 0;
+      // std::cout << "q_next: " << q_next.transpose() << "\n";
+      // std::cout << "q_plus: " << q_plus.transpose() << "\n";
+      // std::cout << "a_theta: " << a0(3) << "\n";
+      // std::cout << "a_plus_theta: " << a_plus(3) << "\n";
+      // std::cout << "dtheta_dy: " << (a_plus(3) - a0(3))/alpha << "\n";
+      // // v_eps(3) = alpha;
+      // // q_plus = integrate(model,q_next,v_eps);
+      // // a_plus = pinocchio::aba(model, data_next, q_plus, vel.segment(n_dof * (i + 1), n_dof),
+      // //          effort_remap, fext_plus);
+      // // v_eps(3) = 0;
+      // // std::cout << "dtheta_dtheta: " << (a_plus(3) - a0(3))/alpha << "\n";
+      // getchar();
+
+
 
       pinocchio::computeABADerivatives(model, data_next,
                                        q_next,

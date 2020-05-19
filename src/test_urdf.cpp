@@ -300,43 +300,55 @@ int main(int argc, char ** argv)
 
   std::cout << "------------------------------\n";
   Model urmodel;
-  pinocchio::urdf::buildModel(box_filename, JointModelFreeFlyer(), urmodel);
-  setRootJointBounds(urmodel, 1, "freeflyer");
+  pinocchio::urdf::buildModel(ur_filename, urmodel);
   Eigen::VectorXd urq = randomConfiguration(urmodel);
+  std::cout << urmodel << "\n";
   Data urdata(urmodel);
   Eigen::VectorXd urv(urmodel.nv);
   //derivative test
-  computeAllTerms(urmodel, urdata, urq, urv);
+  // computeAllTerms(urmodel, urdata, urq, urv);
   Eigen::VectorXd urtau(urmodel.nv);
-  // urq << 0.5, 0.2, 0.5, 0.2, 0.2, 0.3;
-  urv << 1,1,1,1,1,1;
-  urtau << 2,2,2,2,2,2;
-  std::cout << "check joints: " << urmodel.njoints << "\n";
+  urq << 0.5, -0.47, -0.32, -1.97, 0.97, -0.47;
+  urv << 0.1,0.1,0.1,0.1,0.1,0.1;
+  urtau << 0,0,0,0,0,0;
   PINOCCHIO_ALIGNED_STD_VECTOR(pinocchio::Force) urfext((size_t)urmodel.njoints, pinocchio::Force::Zero());
-  pinocchio::Force::Vector3 t = pinocchio::Force::Vector3::Zero();
-  pinocchio::Force::Vector3 f = pinocchio::Force::Vector3::Zero();
-  f << 10,10,10;
-  t << 10,10,10;
-  urfext[2].linear(f);
-  urfext[2].angular(t);
-  computeMinverse(urmodel, urdata, urq);
-  Eigen::MatrixXd M = urdata.M;
-  Eigen::MatrixXd Minv = urdata.Minv;
-  M.triangularView<Eigen::StrictlyLower>() = M.transpose().triangularView<Eigen::StrictlyLower>();
-  Minv.triangularView<Eigen::StrictlyLower>() = Minv.transpose().triangularView<Eigen::StrictlyLower>();
-  std::cout << "check m1: \n" << M << "\n";
-  std::cout << "check minv1 : \n" << Minv << "\n";
-  std::cout << "multiplication: \n " << M * Minv << "\n";
-  computeABADerivatives(urmodel, urdata, urq, urv, urtau);
-  std::cout << "check if nle: " << urdata.nle << "\n";
-  std::cout << "check derivative ddq_dq: \n" << urdata.ddq_dq<< "\n";
-  std::cout << "check derivative ddq_dv: \n" << urdata.ddq_dv << "\n";
-  std::cout << "check m: \n" << urdata.M << "\n";
-  std::cout << "check derivative minv: \n" << urdata.Minv << "\n";
-  std::cout << "multiplication: \n " << M * urdata.Minv << "\n";
+  for(ForceVector::iterator it = urfext.begin(); it != urfext.end(); ++it)
+    (*it).setRandom();
 
-  computeABADerivatives(urmodel, urdata, urq, urv, urtau, urfext);
-  std::cout << "check derivative ddq_dq: \n" << urdata.ddq_dq<< "\n";
-  std::cout << "check derivative ddq_dv: \n" << urdata.ddq_dv << "\n";
+  pinocchio::Force::Vector3 tz = pinocchio::Force::Vector3::Zero();
+  tz[2] = 0.5*urq(1);
+  urfext[1].angular(tz);
+
+
+  Eigen::MatrixXd aba_partial_dq_fd(urmodel.nv,urmodel.nv); aba_partial_dq_fd.setZero();
+
+  Data data_fd(urmodel);
+  Eigen::VectorXd a0 = aba(urmodel,data_fd,urq,urv,urtau,urfext);
+  Eigen::VectorXd v_eps(Eigen::VectorXd::Zero(urmodel.nv));
+  Eigen::VectorXd q_plus(urmodel.nq);
+  Eigen::VectorXd a_plus(urmodel.nv);
+  const double alpha = 1e-8;
+  for(int k = 0; k < urmodel.nv; ++k)
+  {
+    v_eps[k] += alpha;
+    q_plus = integrate(urmodel,urq,v_eps);
+    tz[2] = 0.5*q_plus(1);
+    urfext[1].angular(tz);
+    a_plus = aba(urmodel,data_fd,q_plus,urv,urtau,urfext);
+
+    aba_partial_dq_fd.col(k) = (a_plus - a0)/alpha;
+    v_eps[k] -= alpha;
+  }
+  std::cout << "numerical: \n" << aba_partial_dq_fd << "\n";
+
+  computeABADerivatives(urmodel,data_fd,urq,urv,urtau,urfext);
+
+  std::cout << "pinocchio: \n" << data_fd.ddq_dq << "\n";
+
+  // for(ForceVector::iterator it = urfext.begin(); it != urfext.end(); ++it)
+  //   (*it).setRandom();
+  // computeABADerivatives(urmodel,data_fd,urq,urv,urtau,urfext);
+
+  // std::cout << "pinocchio: \n" << data_fd.ddq_dq << "\n";
 
 }

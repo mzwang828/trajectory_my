@@ -355,6 +355,7 @@ public:
 
       pinocchio::aba(model, data_next, q_next, vel.segment(n_dof * (i + 1), n_dof),
                      effort_remap, fext);
+
       // backward integration
       g.segment(n_dof * i, n_dof) =
           pos.segment(n_dof * i, n_dof) - pos.segment(n_dof * (i + 1), n_dof) +
