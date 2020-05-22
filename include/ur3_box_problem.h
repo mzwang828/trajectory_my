@@ -97,13 +97,13 @@ public:
       bounds.at(1) = Bounds(0, 0);
       bounds.at(2) = Bounds(0, 0);
       bounds.at(3) = Bounds(0, 0);
-      bounds.at(4) = Bounds(0, 0);
+      bounds.at(4) = Bounds(1.57, 1.57);
       bounds.at(5) = Bounds(0, 0);
       bounds.at(6) = Bounds(0.50, 0.50);
       bounds.at(7) = Bounds(0.3, 0.3);
       bounds.at(8) = Bounds(0, 0);
       bounds.at(GetRows() - 3) = Bounds(0.66, 0.66);
-      bounds.at(GetRows() - 2) = Bounds(0.3, 0.3);
+      // bounds.at(GetRows() - 2) = Bounds(0.3, 0.3);
     } else if (GetName() == "velocity") {
       for (int i = 0; i < GetRows(); i++)
         bounds.at(i) = Bounds(-velocity_lim, velocity_lim);

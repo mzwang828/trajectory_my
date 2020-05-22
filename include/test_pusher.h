@@ -500,12 +500,12 @@ public:
       // double alpha = 1e-8;
       // Eigen::VectorXd v_eps(VectorXd::Zero(model.nv));
       // Eigen::VectorXd q_plus(model.nq), a_plus(model.nv);
-      // v_eps(3) = alpha;
+      // v_eps(2) = alpha;
       // q_plus = integrate(model,q_next,v_eps);
       // pinocchio::computeCollisions(model, data_next, geom_model, geom_data,
-      //                              q_plus);
+      //                              q_next);
       // pinocchio::computeDistances(model, data_next, geom_model, geom_data,
-      //                             q_plus);
+      //                             q_next);
 
       // hpp::fcl::DistanceResult dr = geom_data.distanceResults[cp_index];
       // Eigen::Vector3d front_normal_world =
@@ -540,7 +540,7 @@ public:
       
       // a_plus = pinocchio::aba(model, data_next, q_plus, vel.segment(n_dof * (i + 1), n_dof),
       //          effort_remap, fext_plus);
-      // v_eps(3) = 0;
+      // v_eps(2) = 0;
       // std::cout << "q_next: " << q_next.transpose() << "\n";
       // std::cout << "q_plus: " << q_plus.transpose() << "\n";
       // std::cout << "a_theta: " << a0(3) << "\n";
