@@ -242,6 +242,38 @@ int main(int argc, char ** argv)
     v_eps[k] -= alpha;
   }
   
+  // verify numerical ddq_dq
+  // double phala = 1e-6;
+  // Eigen::VectorXd v_pha(urmodel.nv);
+  // v_pha << phala, phala, phala, phala, phala, phala;
+  // q_plus = integrate(urmodel,urq,v_pha);
+  // Eigen::VectorXd q_perturb = q_plus - urq;
+  // computeCollisions(urmodel,urdata,geom_model,geom_data,q_plus);
+  // computeDistances(urmodel, urdata, geom_model, geom_data, q_plus);
+  // dr = geom_data.distanceResults[cp_index];
+  // std::cout << " - nearest point: " << dr.nearest_points[0].transpose() << "," << dr.nearest_points[1].transpose() << "\n";
+  // std::cout << "Pose of point: \n" << geom_data.oMg[geom_model.getGeometryId("point_0")] << "\n";
+  // std::cout << "Pose of front plane: \n" << geom_data.oMg[geom_model.getGeometryId("obj_front_0")] << "\n";
+  // pinocchio::computeJointJacobians(urmodel, urdata, q_plus);
+  // pinocchio::framesForwardKinematics(urmodel, urdata, q_plus);
+  // root_joint_frame_placement = urdata.oMf[urmodel.getFrameId("box_root_joint")];
+  // object_r_j2c = root_joint_frame_placement.inverse().act(dr.nearest_points[0]);
+  // force_ext.head(3) = force;
+  // force_ext(3) = -object_r_j2c(2) * force(1) + object_r_j2c(1) * force(2);
+  // force_ext(4) = object_r_j2c(2) * force(0) - object_r_j2c(0) * force(2);
+  // force_ext(5) = -object_r_j2c(1) * force(0) + object_r_j2c(0) * force(1);
+  // fext_ref = force_ext;
+  // fext[1] = pinocchio::ForceRef<pinocchio::Force::Vector6>(fext_ref);
+  // aba(urmodel,urdata,q_plus,urv,urtau,fext);
+  
+  // // double perturb_value = q_plus(0) - urq(0);
+  // // std::cout << "perturb value: " << (q_plus - urq).transpose() << "\n";
+  // std::cout << "a reference: " << urdata.ddq.transpose() << "\n";
+  // std::cout << "a predicted from numerical: " << (a0 + aba_partial_dq_fd * q_perturb).transpose() << "\n";
+
+
+
+
 
 
   pinocchio::computeCollisions(urmodel, urdata, geom_model, geom_data,
