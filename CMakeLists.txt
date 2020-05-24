@@ -17,7 +17,7 @@ urdf
 ## System dependencies are found with CMake's conventions
 find_package(Boost REQUIRED COMPONENTS system)
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(PINOCCHIO pinocchio REQUIRED)
+pkg_search_module(PINOCCHIO REQUIRED pinocchio)
 pkg_search_module(PKG_HPP_FCL REQUIRED hpp-fcl)
 
 ## Uncomment this if the package has a setup.py. This macro ensures
@@ -160,6 +160,7 @@ target_link_libraries(test_urdf
   ${Boost_LIBRARIES}
   ${catkin_LIBRARIES}
   ${PKG_HPP_FCL_LDFLAGS}
+  ${PINOCCHIO_LIBRARIES}
 )
 
 link_directories(${PINOCCHIO_LIBRARY_DIRS})
@@ -183,6 +184,7 @@ target_link_libraries(test_pusher
   ${Boost_LIBRARIES}
   ${catkin_LIBRARIES}
   ${PKG_HPP_FCL_LDFLAGS}
+  ${PINOCCHIO_LIBRARIES}
   yaml-cpp
 )
 target_compile_definitions(test_pusher PRIVATE ${PINOCCHIO_CFLAGS_OTHER})
@@ -194,6 +196,7 @@ target_link_libraries(ur3_box
   ${Boost_LIBRARIES}
   ${catkin_LIBRARIES}
   ${PKG_HPP_FCL_LDFLAGS}
+  ${PINOCCHIO_LIBRARIES}
   yaml-cpp
 )
 target_compile_definitions(ur3_box PRIVATE ${PINOCCHIO_CFLAGS_OTHER})
