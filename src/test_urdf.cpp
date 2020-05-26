@@ -183,10 +183,10 @@ int main(int argc, char ** argv)
   // computeAllTerms(urmodel, urdata, urq, urv);
   Eigen::VectorXd urtau(urmodel.nv);
   Quaternion qt;
-  qt = ToQuaternion(0.0, 0, 0);
+  qt = ToQuaternion(0.6, 0, 0);
   urq << 1, 0.01, 0, qt.x, qt.y, qt.z, qt.w;
   urv << 1,1,1,1,1,1;
-  urtau << 0,0,0,0,0,0;
+  urtau << 0,0,0,0,0,3;
 
   computeCollisions(urmodel,urdata,geom_model,geom_data,urq);
   computeDistances(urmodel, urdata, geom_model, geom_data, urq);
@@ -243,33 +243,34 @@ int main(int argc, char ** argv)
   }
   
   // verify numerical ddq_dq
-  // double phala = 1e-6;
-  // Eigen::VectorXd v_pha(urmodel.nv);
-  // v_pha << phala, phala, phala, phala, phala, phala;
-  // q_plus = integrate(urmodel,urq,v_pha);
+  double phala = 1e-6;
+  Eigen::VectorXd v_pha(urmodel.nv);
+  v_pha << phala, phala, phala, phala, phala, phala;
+  q_plus = integrate(urmodel,urq,v_pha);
   // Eigen::VectorXd q_perturb = q_plus - urq;
-  // computeCollisions(urmodel,urdata,geom_model,geom_data,q_plus);
-  // computeDistances(urmodel, urdata, geom_model, geom_data, q_plus);
-  // dr = geom_data.distanceResults[cp_index];
-  // std::cout << " - nearest point: " << dr.nearest_points[0].transpose() << "," << dr.nearest_points[1].transpose() << "\n";
-  // std::cout << "Pose of point: \n" << geom_data.oMg[geom_model.getGeometryId("point_0")] << "\n";
-  // std::cout << "Pose of front plane: \n" << geom_data.oMg[geom_model.getGeometryId("obj_front_0")] << "\n";
-  // pinocchio::computeJointJacobians(urmodel, urdata, q_plus);
-  // pinocchio::framesForwardKinematics(urmodel, urdata, q_plus);
-  // root_joint_frame_placement = urdata.oMf[urmodel.getFrameId("box_root_joint")];
-  // object_r_j2c = root_joint_frame_placement.inverse().act(dr.nearest_points[0]);
-  // force_ext.head(3) = force;
-  // force_ext(3) = -object_r_j2c(2) * force(1) + object_r_j2c(1) * force(2);
-  // force_ext(4) = object_r_j2c(2) * force(0) - object_r_j2c(0) * force(2);
-  // force_ext(5) = -object_r_j2c(1) * force(0) + object_r_j2c(0) * force(1);
-  // fext_ref = force_ext;
-  // fext[1] = pinocchio::ForceRef<pinocchio::Force::Vector6>(fext_ref);
-  // aba(urmodel,urdata,q_plus,urv,urtau,fext);
+  computeCollisions(urmodel,urdata,geom_model,geom_data,q_plus);
+  computeDistances(urmodel, urdata, geom_model, geom_data, q_plus);
+  dr = geom_data.distanceResults[cp_index];
+  std::cout << " - nearest point: " << dr.nearest_points[0].transpose() << "," << dr.nearest_points[1].transpose() << "\n";
+  std::cout << "Pose of point: \n" << geom_data.oMg[geom_model.getGeometryId("point_0")] << "\n";
+  std::cout << "Pose of front plane: \n" << geom_data.oMg[geom_model.getGeometryId("obj_front_0")] << "\n";
+  pinocchio::computeJointJacobians(urmodel, urdata, q_plus);
+  pinocchio::framesForwardKinematics(urmodel, urdata, q_plus);
+  root_joint_frame_placement = urdata.oMf[urmodel.getFrameId("box_root_joint")];
+  object_r_j2c = root_joint_frame_placement.inverse().act(dr.nearest_points[0]);
+  force_ext.head(3) = force;
+  force_ext(3) = -object_r_j2c(2) * force(1) + object_r_j2c(1) * force(2);
+  force_ext(4) = object_r_j2c(2) * force(0) - object_r_j2c(0) * force(2);
+  force_ext(5) = -object_r_j2c(1) * force(0) + object_r_j2c(0) * force(1);
+  fext_ref = force_ext;
+  fext[1] = pinocchio::ForceRef<pinocchio::Force::Vector6>(fext_ref);
+  aba(urmodel,urdata,q_plus,urv,urtau,fext);
   
-  // // double perturb_value = q_plus(0) - urq(0);
-  // // std::cout << "perturb value: " << (q_plus - urq).transpose() << "\n";
-  // std::cout << "a reference: " << urdata.ddq.transpose() << "\n";
-  // std::cout << "a predicted from numerical: " << (a0 + aba_partial_dq_fd * q_perturb).transpose() << "\n";
+  double perturb_value = q_plus(0) - urq(0);
+  std::cout << "perturb value: " << (q_plus - urq).transpose() << "\n";
+  std::cout << "a_plus reference: " << urdata.ddq.transpose() << "\n";
+  std::cout << "a_plus predicted from numerical: " << (a0 + aba_partial_dq_fd * v_pha).transpose() << "\n";
+  std::cout << "Just a: " << a0.transpose() << "\n";
 
 
 
@@ -283,14 +284,14 @@ int main(int argc, char ** argv)
   Eigen::Vector3d force_world =
       geom_data.oMg[geom_model.getGeometryId("box_0")].rotation() *
       force;
-  // std::cout << "check transform: " << geom_data.oMg[geom_model.getGeometryId("box_0")].rotation() << "\n";
+  std::cout << "check transform: " << geom_data.oMg[geom_model.getGeometryId("box_0")].rotation() << "\n";
   double fx = force_world(0);
   double fy = force_world(1);
   double fz = force_world(2);
   double mx = 0;
   double my = 0;
   double mz = 0;
-  double th = 0.0;
+  double th = 0.6;
   double lx = object_r_j2c_true(0);
   double ly = object_r_j2c_true(1);
   std::cout << "r_j2c: " << object_r_j2c_true << "\n";
@@ -298,16 +299,32 @@ int main(int argc, char ** argv)
   force_with_moment.setZero();
   force_with_moment.head(3) = force_world;
 
-  Eigen::MatrixXd dJdtheta(6,6);
+  Eigen::MatrixXd J_lw(6,6), dJdtheta(6,6), drdtheta(3,3);
+  J_lw.setZero();
+  J_lw << cos(0.6), -sin(0.6), 0, 0,  0, -lx*sin(0.6)-ly*cos(0.6),
+          sin(0.6), cos(0.6), 0, 0, 0,  lx*cos(0.6)-ly*sin(0.6),
+          0, 0, 1,  ly,   -lx, 0,
+          0, 0, 0, cos(0.6), -sin(0.6), 0,
+          0, 0, 0, sin(0.6), cos(0.6), 0,
+          0,0,0,0,0,1;
+
   dJdtheta << -sin(0.6), -cos(0.6), 0, 0,  0, -lx*cos(0.6)+ly*sin(0.6),
           cos(0.6), -sin(0.6), 0, 0, 0,  -lx*sin(0.6)-ly*cos(0.6),
           0, 0, 0,  0,   0, 0,
           0, 0, 0, -sin(0.6), -cos(0.6), 0,
           0, 0, 0, cos(0.6), -sin(0.6), 0,
           0,0,0,0,0,0;
-  Eigen::MatrixXd dJdqf(6,6);
-  dJdqf.setZero();
+  drdtheta << -sin(0.6), -cos(0.6), 0, 
+              cos(0.6), -sin(0.6), 0,
+              0, 0, 0;
+  Eigen::VectorXd dfdtheta(6);
+  dfdtheta.setZero();
+  dfdtheta.head(3) = drdtheta * force;
+
+  Eigen::MatrixXd dJdqf(6,6), Jdfdq(6,6);
+  dJdqf.setZero(), Jdfdq.setZero();
   dJdqf.rightCols(1) = dJdtheta.transpose() * force_with_moment;
+  Jdfdq.rightCols(1) = J_lw.transpose() * dfdtheta;
   // dJdqf.bottomRows(1) = (dJdtheta.transpose() * force_with_moment).transpose();
 
   std::cout << "force in world: " << force_world.transpose() << "\n";
@@ -323,10 +340,10 @@ int main(int argc, char ** argv)
   Minv.triangularView<Eigen::StrictlyLower>() =
       Minv.transpose().triangularView<Eigen::StrictlyLower>();
   Eigen::MatrixXd analy(6,6);
-  analy = Minv * dJdqf + urdata.ddq_dq;
+  analy = Minv * (dJdqf + Jdfdq) + urdata.ddq_dq;
 
   std:: cout << "Minv * dJ^T/dq * f: \n" << Minv * dJdqf << "\n";
-  // std::cout << "ddq_dq: \n" << u rdata.ddq_dq << "\n";
+  std::cout << "ddq_dq: \n" << urdata.ddq_dq << "\n";
   std::cout << "analytical: \n " << analy << "\n";
 
   std::cout << "numerical: \n" << aba_partial_dq_fd << "\n";
