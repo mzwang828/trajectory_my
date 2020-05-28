@@ -101,7 +101,7 @@ public:
       bounds.at(1) = Bounds(0.35, 0.35);
       bounds.at(2) = Bounds(0, 0);
       bounds.at(3) = Bounds(0, 0);
-      bounds.at(GetRows() - 3) = Bounds(0.65, 0.65);
+      bounds.at(GetRows() - 3) = Bounds(0.70, 0.70);
       bounds.at(GetRows() - 2) = Bounds(0, 0);
     } else if (GetName() == "velocity") {
       for (int i = 0; i < GetRows(); i++)
@@ -379,10 +379,16 @@ public:
       pinocchio::aba(model, data_next, q_next, vel.segment(n_dof * (i + 1), n_dof),
                      effort_remap, fext);
 
+      // convert box velocity from local frame to world frame
+      Eigen::MatrixXd v_l2w(n_dof, n_dof);  
+      v_l2w << 1, 0, 0, 0,
+               0, cos(pos(n_dof*(i+2) - 1)), -sin(pos(n_dof*(i+2) - 1)), 0,
+               0, sin(pos(n_dof*(i+2) - 1)), cos(pos(n_dof*(i+2) - 1)), 0,
+               0, 0, 0, 1;
       // backward integration
       g.segment(n_dof * i, n_dof) =
           pos.segment(n_dof * i, n_dof) - pos.segment(n_dof * (i + 1), n_dof) +
-          t_step * (vel.segment(n_dof * (i + 1), n_dof));
+          t_step * v_l2w * vel.segment(n_dof * (i + 1), n_dof);
 
       // smoothed if condition
       // g.segment(n_dof * (n_step - 1 + i), n_dof) =
@@ -478,7 +484,7 @@ public:
       q_next(model.nq - 2) = cos(pos(n_dof * (i + 1) + n_dof - 1));
       q_next(model.nq - 1) = sin(pos(n_dof * (i + 1) + n_dof - 1));
       
-      // Calculate acceleration using Aba
+      // Get fext
       Eigen::VectorXd effort_remap(model.nv);
       effort_remap.setZero();
       effort_remap(0) = effort(i+1);
@@ -488,74 +494,6 @@ public:
       fext[1] = pinocchio::ForceRef<pinocchio::Force::Vector6>(fext_robot_ref);
       fext[2] = pinocchio::ForceRef<pinocchio::Force::Vector6>(fext_object_ref);
 
-
-
-
-      //check derivative ddq_dq vs difference
-      // VectorXd exforce = GetVariables()->GetComponent("exforce")->GetValues();
-      // pinocchio::GeometryData geom_data(geom_model);
-      // pinocchio::aba(model, data_next, q_next, vel.segment(n_dof * (i + 1), n_dof),
-      //     effort_remap, fext);
-      // Eigen::VectorXd a0 = data_next.ddq;
-      // double alpha = 1e-8;
-      // Eigen::VectorXd v_eps(VectorXd::Zero(model.nv));
-      // Eigen::VectorXd q_plus(model.nq), a_plus(model.nv);
-      // v_eps(2) = alpha;
-      // q_plus = integrate(model,q_next,v_eps);
-      // pinocchio::computeCollisions(model, data_next, geom_model, geom_data,
-      //                              q_next);
-      // pinocchio::computeDistances(model, data_next, geom_model, geom_data,
-      //                             q_next);
-
-      // hpp::fcl::DistanceResult dr = geom_data.distanceResults[cp_index];
-      // Eigen::Vector3d front_normal_world =
-      //     geom_data.oMg[geom_model.getGeometryId("box_0")].rotation() *
-      //     front_normal;
-      // pinocchio::computeJointJacobians(model, data_next, q_plus);
-      // pinocchio::framesForwardKinematics(model, data_next, q_plus);
-      // pinocchio::SE3 joint_frame_placement =
-      //     data_next.oMf[model.getFrameId("base_to_pusher")];
-      // pinocchio::SE3 root_joint_frame_placement =
-      //     data_next.oMf[model.getFrameId("box_root_joint")];
-      // Eigen::Vector3d object_r_j2c = root_joint_frame_placement.inverse().act(dr.nearest_points[1]);
-      // Eigen::Vector3d robot_r_j2c = joint_frame_placement.inverse().act(dr.nearest_points[0]);
-
-      // Eigen::VectorXd force_cp(3), force_ocp(3), fext_robot_plus(6), fext_object_plus(6);
-      // force_cp = -(data_next.oMi[model.getJointId("base_to_pusher")].rotation().transpose() *
-      //              front_normal_world * exforce(i + 1));
-      // fext_robot_plus.head(3) = force_cp;
-      // fext_robot_plus(3) = -robot_r_j2c(2) * force_cp(1) + robot_r_j2c(1) * force_cp(2);
-      // fext_robot_plus(4) = robot_r_j2c(2) * force_cp(0) - robot_r_j2c(0) * force_cp(2);
-      // fext_robot_plus(5) = -robot_r_j2c(1) * force_cp(0) + robot_r_j2c(0) * force_cp(1);
-      // force_ocp = front_normal * exforce(i+1);
-      // fext_object_plus.head(3) = force_ocp;
-      // fext_object_plus(3) = -object_r_j2c(2) * force_ocp(1) + object_r_j2c(1) * force_ocp(2);
-      // fext_object_plus(4) = object_r_j2c(2) * force_ocp(0) - object_r_j2c(0) * force_ocp(2);
-      // fext_object_plus(5) = -object_r_j2c(1) * force_ocp(0) + object_r_j2c(0) * force_ocp(1);
-      // fext_robot_ref = fext_robot_plus;
-      // fext_object_ref = fext_object_plus;
-      // PINOCCHIO_ALIGNED_STD_VECTOR(pinocchio::Force) fext_plus((size_t)model.njoints, pinocchio::Force::Zero());
-      // fext_plus[1] = pinocchio::ForceRef<pinocchio::Force::Vector6>(fext_robot_ref);
-      // fext_plus[2] = pinocchio::ForceRef<pinocchio::Force::Vector6>(fext_object_ref);
-      
-      // a_plus = pinocchio::aba(model, data_next, q_plus, vel.segment(n_dof * (i + 1), n_dof),
-      //          effort_remap, fext_plus);
-      // v_eps(2) = 0;
-      // std::cout << "q_next: " << q_next.transpose() << "\n";
-      // std::cout << "q_plus: " << q_plus.transpose() << "\n";
-      // std::cout << "a_theta: " << a0(3) << "\n";
-      // std::cout << "a_plus_theta: " << a_plus(3) << "\n";
-      // std::cout << "dtheta_dy: " << (a_plus(3) - a0(3))/alpha << "\n";
-      // // v_eps(3) = alpha;
-      // // q_plus = integrate(model,q_next,v_eps);
-      // // a_plus = pinocchio::aba(model, data_next, q_plus, vel.segment(n_dof * (i + 1), n_dof),
-      // //          effort_remap, fext_plus);
-      // // v_eps(3) = 0;
-      // // std::cout << "dtheta_dtheta: " << (a_plus(3) - a0(3))/alpha << "\n";
-      // getchar();
-
-
-
       pinocchio::computeABADerivatives(model, data_next,
                                        q_next,
                                        vel.segment(n_dof * (i + 1), n_dof),
@@ -564,7 +502,18 @@ public:
       Eigen::MatrixXd Minv = data_next.Minv;
       Minv.triangularView<Eigen::StrictlyLower>() =
           Minv.transpose().triangularView<Eigen::StrictlyLower>();
-        
+      
+      Eigen::MatrixXd v_l2w(n_dof, n_dof), dv_l2w(n_dof, n_dof);  
+      v_l2w << 1, 0, 0, 0,
+               0, cos(pos(n_dof*(i+2) - 1)), -sin(pos(n_dof*(i+2) - 1)), 0,
+               0, sin(pos(n_dof*(i+2) - 1)), cos(pos(n_dof*(i+2) - 1)), 0,
+               0, 0, 0, 1;
+      dv_l2w << 0, 0, 0, 0,
+                0, -sin(pos(n_dof*(i+2) - 1)), -cos(pos(n_dof*(i+2) - 1)), 0,
+                0, cos(pos(n_dof*(i+2) - 1)), -sin(pos(n_dof*(i+2) - 1)), 0,
+                0, 0, 0, 0;
+      // dq_dtheta_k+1 due to converting box velocity from local to world
+      Eigen::VectorXd dq_dtheta_plus = t_step * dv_l2w * vel.segment(n_dof * (i + 1), n_dof);
 
       // construct the triplet list for 5 sparse matrix (the 5 Jacobian,
       // corresponding to 5 constraint sets)
@@ -573,17 +522,17 @@ public:
           // Triplet for position
           triplet_pos.push_back(T(n_dof * i + j, n_dof * i + j, 1)); // dq_dq_k
           triplet_pos.push_back(
-              T(n_dof * i + j, n_dof * i + j + n_dof, -1)); // dq_dq_k+1
+              T(n_dof * i + j, n_dof * (i+1) + j, -1)); // dq_dq_k+1
+          triplet_pos.push_back(
+              T(n_dof * i + j, n_dof * (i+1) + n_dof - 1, dq_dtheta_plus(j))); // dq_dtheta_k+1
           for (int k = 0; k < n_dof; k++) {
             triplet_pos.push_back(T(n_dof * (n_step - 1 + i) + j,
-                                    n_dof * i + n_dof + k,
+                                    n_dof * (i + 1) + k,
                                     -data_next.ddq_dq(j, k))); // ddq_dq_k+1
           }
         }
         if (var_set == "velocity") {
           // Triplet for velocity
-          triplet_vel.push_back(
-              T(n_dof * i + j, n_dof * i + j + n_dof, t_step)); // dq_dv_k+1
           triplet_vel.push_back(T(n_dof * (n_step - 1 + i) + j, n_dof * i + j,
                                   -1.0 / t_step)); // ddq_dv_k
           triplet_vel.push_back(T(n_dof * (n_step - 1 + i) + j, n_dof * i + 1,
@@ -594,8 +543,10 @@ public:
                                   n_dof * i + j + n_dof,
                                   1.0 / t_step)); // ddq_dv_k+1
           for (int k = 0; k < n_dof; k++) {
+            triplet_vel.push_back(
+              T(n_dof * i + j, n_dof * (i+1) + k, t_step * v_l2w(j, k))); // dq_dv_k+1
             triplet_vel.push_back(T(n_dof * (n_step - 1 + i) + j,
-                                    n_dof * i + n_dof + k,
+                                    n_dof * (i + 1) + k,
                                     -data_next.ddq_dv(j, k))); // ddq_dv_k+1
           }
         }
@@ -619,11 +570,12 @@ public:
         triplet_exforce.push_back(T(n_dof * 2 * (n_step - 1) + n_step - 1 + i, i + 1, 1));
       }
       if (var_set == "slack") {
+        triplet_slack.push_back(T(n_dof * 2 * (n_step - 1) + i, i, -1));
         triplet_slack.push_back(T(n_dof * 2 * (n_step - 1) + n_step - 1 + i, n_step - 1 + i, -1));
         triplet_slack.push_back(T(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i, i, slack(n_step - 1 + i)));
         triplet_slack.push_back(T(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i, n_step - 1 + i, slack(i)));
       }
-    }
+    } 
     if (var_set == "position") {
       jac_block.setFromTriplets(triplet_pos.begin(), triplet_pos.end());
     }

@@ -241,7 +241,7 @@ int main(int argc, char ** argv)
     aba_partial_dq_fd.col(k) = (a_plus - a0)/alpha;
     v_eps[k] -= alpha;
   }
-  
+
   // verify numerical ddq_dq
   double phala = 1e-6;
   Eigen::VectorXd v_pha(urmodel.nv);
@@ -271,9 +271,6 @@ int main(int argc, char ** argv)
   std::cout << "a_plus reference: " << urdata.ddq.transpose() << "\n";
   std::cout << "a_plus predicted from numerical: " << (a0 + aba_partial_dq_fd * v_pha).transpose() << "\n";
   std::cout << "Just a: " << a0.transpose() << "\n";
-
-
-
 
 
 
