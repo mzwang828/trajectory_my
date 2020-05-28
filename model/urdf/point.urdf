@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<robot name="point">
+
+  <link name="point">
+    <visual>
+      <geometry>
+        <sphere radius="0.02"/>
+      </geometry>
+    </visual>
+    <collision>
+      <geometry>
+        <sphere radius="0.02"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.1"/>
+      <inertia ixx="0.000016" ixy="0.0" ixz="0.0" iyy="0.000016" iyz="0.0" izz="0.000016"/>
+    </inertial>
+  </link>
+  
+</robot>
