@@ -101,7 +101,7 @@ public:
       bounds.at(1) = Bounds(0.35, 0.35);
       bounds.at(2) = Bounds(0, 0);
       bounds.at(3) = Bounds(0, 0);
-      bounds.at(GetRows() - 3) = Bounds(0.70, 0.70);
+      bounds.at(GetRows() - 3) = Bounds(0.65, 0.65);
       bounds.at(GetRows() - 2) = Bounds(0, 0);
     } else if (GetName() == "velocity") {
       for (int i = 0; i < GetRows(); i++)
@@ -282,14 +282,18 @@ public:
       pinocchio::computeCollisions(model, data, geom_model, geom_data, q);
       pinocchio::computeDistances(model, data, geom_model, geom_data, q);
       hpp::fcl::DistanceResult dr = geom_data.distanceResults[cp_index];
+      Eigen::Vector3d distance_normal;
+      distance_normal = dr.nearest_points[1] - dr.nearest_points[0];
+      distance_normal.normalize();
       Eigen::Vector3d front_normal_world =
           geom_data.oMg[geom_model.getGeometryId("box_0")].rotation() *
           front_normal;
       // get sign from distance normal & surface normal vector
       double distance =
-          signbit(dr.normal.transpose() * front_normal_world)
-              ? (-1) * dr.min_distance
-              : dr.min_distance;
+          tanh(20 * double(distance_normal.transpose() * front_normal_world)) * dr.min_distance;
+          // signbit(distance_normal.transpose() * front_normal_world)
+          //     ? (-1) * dr.min_distance
+          //     : dr.min_distance;
 
       // Update the contact point frame
       pinocchio::computeCollisions(model, data_next, geom_model, geom_data,
@@ -309,6 +313,7 @@ public:
       pinocchio::SE3 root_joint_frame_placement =
           data_next.oMf[model.getFrameId("box_root_joint")];
       Eigen::Vector3d object_r_j2c = root_joint_frame_placement.inverse().act(dr.nearest_points[1]);
+      // Eigen::Vector3d object_r_j2c(-0.025, 0, 0);
       Eigen::Vector3d robot_r_j2c = joint_frame_placement.inverse().act(dr.nearest_points[0]);
       model.frames[contactId].placement.translation() = robot_r_j2c;
       model.frames[object_contactId].placement.translation() = object_r_j2c;
@@ -402,7 +407,7 @@ public:
           1 / t_step *
               (vel.segment(n_dof * (i + 1), n_dof) -
                vel.segment(n_dof * i, n_dof)) - data_next.ddq +
-          Minv * f * tanh(20 * vel(n_dof * (i) + 1));
+          Minv * f * tanh(20 * vel(n_dof * i + 1));
 
       // Complimentary friction////////////////
       // Eigen::Vector4d friction_pos(0.0, friction(i), 0, 0);
@@ -449,7 +454,7 @@ public:
       bounds.at(n_dof * 2 * (n_step - 1) + i) = Bounds(0.0, 0.0);
       bounds.at(n_dof * 2 * (n_step - 1) + n_step - 1 + i) = Bounds(0.0, 0.0);
       bounds.at(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i) =
-          Bounds(0.0, 0.0);
+          Bounds(0.0, inf);
       // FRICTION
       // bounds.at(n_dof * 2 * (n_step - 1) + 3 * (n_step - 1) + i) =
       // Bounds(0.0, inf); // Eq. (11) 
