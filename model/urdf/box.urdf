@@ -25,13 +25,13 @@
   <link name="obj_front">
     <visual>
       <geometry>
-        <sphere radius="1e-6"/>
+        <sphere radius="1e-10"/>
       </geometry>
     <material name="white"/>
     </visual>
     <collision>
       <geometry>
-        <sphere radius="1e-6"/>
+        <sphere radius="1e-10"/>
       </geometry>
     </collision>
   </link>

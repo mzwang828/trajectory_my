@@ -224,7 +224,7 @@
   <link name="ee_link">
     <collision>
       <geometry>
-        <sphere radius="0.02"/>
+        <sphere radius="1e-10"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
     </collision>

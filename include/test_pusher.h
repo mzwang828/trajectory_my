@@ -313,8 +313,9 @@ public:
       pinocchio::SE3 root_joint_frame_placement =
           data_next.oMf[model.getFrameId("box_root_joint")];
       Eigen::Vector3d object_r_j2c = root_joint_frame_placement.inverse().act(dr.nearest_points[1]);
-      // Eigen::Vector3d object_r_j2c(-0.025, 0, 0);
       Eigen::Vector3d robot_r_j2c = joint_frame_placement.inverse().act(dr.nearest_points[0]);
+      // Eigen::Vector3d object_r_j2c(-0.025,0,0);
+      // Eigen::Vector3d robot_r_j2c(0.26, 0, 0);
       model.frames[contactId].placement.translation() = robot_r_j2c;
       model.frames[object_contactId].placement.translation() = object_r_j2c;
 
@@ -347,7 +348,7 @@ public:
       //             geom_data.oMg[geom_model.getGeometryId("tip_0")].rotation().transpose() * 
       //             front_normal_world + w_J_object.topRows(3).transpose() * front_normal;
 
-      J_remapped.col(i) = -1 * w_J_contact.topRows(3).transpose() * 
+      J_remapped.col(i) = -w_J_contact.topRows(3).transpose() * 
             data_next.oMf[contactId].rotation().transpose() * 
             front_normal_world + w_J_object.topRows(3).transpose() * front_normal;
       // Calculate NLE, inertial matrix
@@ -454,7 +455,7 @@ public:
       bounds.at(n_dof * 2 * (n_step - 1) + i) = Bounds(0.0, 0.0);
       bounds.at(n_dof * 2 * (n_step - 1) + n_step - 1 + i) = Bounds(0.0, 0.0);
       bounds.at(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i) =
-          Bounds(0.0, inf);
+          Bounds(0.0, 0.0);
       // FRICTION
       // bounds.at(n_dof * 2 * (n_step - 1) + 3 * (n_step - 1) + i) =
       // Bounds(0.0, inf); // Eq. (11) 
