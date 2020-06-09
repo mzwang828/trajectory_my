@@ -2,6 +2,7 @@
 #include <ifopt/cost_term.h>
 #include <ifopt/variable_set.h>
 #include <math.h>
+#include <fstream>
 #include <algorithm>
 #include <yaml-cpp/yaml.h>
 
@@ -52,12 +53,26 @@ public:
     n_exforce = params["n_exforce"].as<int>();
     n_step = params["n_step"].as<int>();
     t_step = params["t_step"].as<double>();
-
+    
     xvar = Eigen::VectorXd::Zero(n);
     // the initial values where the NLP starts iterating from
     if (name == "position") {
-      for (int i = 0; i < n; i++)
-        xvar(i) = 0.0;
+      for (int i = 0; i < n_step; i++){
+        xvar(i*n_dof) =  -1.0 + i * (1.0/n_step);
+        xvar(i*n_dof+1) = 1.86 - i * (1.86/n_step);
+        xvar(i*n_dof+2) = -0.8 + i * (0.8/n_step);
+        xvar(i*n_dof+3) = 0.43 + i * (0.10/n_step);
+        xvar(i*n_dof+4) = 0.131073;
+        xvar(i*n_dof+5) = 0;
+        // xvar(i*n_dof) =  0;
+        // xvar(i*n_dof+1) = 0;
+        // xvar(i*n_dof+2) = 0;
+        // xvar(i*n_dof+3) = 0;
+        // xvar(i*n_dof+4) = 0.131073;
+        // xvar(i*n_dof+5) = 0;
+      }
+      // for (int i = 0; i < n; i++)
+      //   xvar(i) = 0.0;
     } else if (name == "velocity") {
       for (int i = 0; i < n; i++)
         xvar(i) = 0.0;
@@ -73,6 +88,20 @@ public:
         xvar(n / 2 + i) = 1;
       }
     }
+  }
+
+  ExVariables(int n, const std::string &name, Eigen::VectorXd& init_values) : VariableSet(n, name) {
+    YAML::Node params = YAML::LoadFile(
+        "/home/mzwang/catkin_ws/src/trajectory_my/Config/params.yaml");
+    n_dof = params["n_dof"].as<int>();
+    n_control = params["n_control"].as<int>();
+    n_exforce = params["n_exforce"].as<int>();
+    n_step = params["n_step"].as<int>();
+    t_step = params["t_step"].as<double>();
+
+    xvar = Eigen::VectorXd::Zero(n);
+    // the initial values where the NLP starts iterating from
+    xvar = init_values;
   }
 
   // Here is where you can transform the Eigen::Vector into whatever
@@ -96,13 +125,13 @@ public:
       bounds.at(0) = Bounds(-1.0, -1.0);
       bounds.at(1) = Bounds(1.86, 1.86);
       bounds.at(2) = Bounds(-0.8, -0.8);
-      bounds.at(3) = Bounds(0.45, 0.45);
+      bounds.at(3) = Bounds(0.43, 0.43);
       bounds.at(4) = Bounds(0.131073, 0.131073);
       bounds.at(5) = Bounds(0, 0);
       // bounds.at(6) = Bounds(0.50, 0.50);
       // bounds.at(7) = Bounds(0.3, 0.3);
       // bounds.at(8) = Bounds(0, 0);
-      bounds.at(GetRows() - 3) = Bounds(0.6, 0.6);
+      bounds.at(GetRows() - 3) = Bounds(0.53, 0.53);
       // bounds.at(GetRows() - 2) = Bounds(0.3, 0.3);
     } else if (GetName() == "velocity") {
       for (int i = 0; i < GetRows(); i++)
@@ -302,8 +331,10 @@ public:
       pinocchio::SE3 root_joint_frame_placement =
           data_next.oMf[model.getFrameId("box_root_joint")];
 
-      Eigen::Vector3d robot_r_j2c = joint_frame_placement.inverse().act(dr.nearest_points[0]);
-      Eigen::Vector3d object_r_j2c = root_joint_frame_placement.inverse().act(dr.nearest_points[1]);
+      // Eigen::Vector3d robot_r_j2c = joint_frame_placement.inverse().act(dr.nearest_points[0]);
+      // Eigen::Vector3d object_r_j2c = root_joint_frame_placement.inverse().act(dr.nearest_points[1]);
+      Eigen::Vector3d robot_r_j2c(-0.092, 0.104, 0.085);
+      Eigen::Vector3d object_r_j2c(-0.025, 0, 0); 
       model.frames[contactId].placement.translation() = robot_r_j2c;
       model.frames[object_contactId].placement.translation() = object_r_j2c;
 
@@ -314,13 +345,15 @@ public:
       w_J_object.fill(0);
       w_J_contact_aligned.fill(0);
       w_J_object_aligned.fill(0);
-      pinocchio::getFrameJacobian(model, data_next, contactId, pinocchio::LOCAL_WORLD_ALIGNED,
+      pinocchio::getFrameJacobian(model, data_next, contactId, pinocchio::LOCAL,
                                   w_J_contact);
       pinocchio::getFrameJacobian(model, data_next, object_contactId,
                                   pinocchio::LOCAL_WORLD_ALIGNED, w_J_object);
-      J_remapped.col(i) = w_J_contact.topRows(3).transpose() * 
-            data_next.oMi[model.getJointId("wrist_1_joint")].rotation().transpose() * 
-            front_normal_world + w_J_object.topRows(3).transpose() * front_normal;
+      // J_remapped.col(i) = w_J_contact.topRows(3).transpose() * 
+      //       data_next.oMi[model.getJointId("wrist_1_joint")].rotation().transpose() * 
+      //       front_normal_world + w_J_object.topRows(3).transpose() * front_normal;
+
+      J_remapped.col(i) = w_J_contact.topRows(3).transpose() * front_normal + w_J_object.topRows(3).transpose() * front_normal;
       // Calculate NLE, inertial matrix
       pinocchio::nonLinearEffects(model, data_next, q_next,
                                   vel.segment(n_dof * (i + 1), n_dof));
@@ -332,8 +365,9 @@ public:
       // Get external force in local joint frame
       Eigen::VectorXd force_cp(3), force_ocp(3);
       // contact force in [wrist_3_joint] frame at [contact] point
-      force_cp = -(data_next.oMi[model.getJointId("wrist_1_joint")].rotation().transpose() *
-                   front_normal_world * exforce(i + 1));
+      // force_cp = -(data_next.oMi[model.getJointId("wrist_1_joint")].rotation().transpose() *
+      //              front_normal_world * exforce(i + 1));
+      force_cp = front_normal * exforce(i+1);
       // Get force and moment at [joint_origin] point
       fext_robot.col(i).head(3) = force_cp;
       fext_robot.col(i)(3) = -robot_r_j2c(2) * force_cp(1) + robot_r_j2c(1) * force_cp(2);
