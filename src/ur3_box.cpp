@@ -20,7 +20,7 @@ int main()
   Eigen::VectorXd q_dot_init(ndof*nsteps);
   Eigen::VectorXd control_init(n_control*nsteps);
   Eigen::VectorXd exforce_init(n_exforce*nsteps);
-  Eigen::VectorXd slack_init(2*nsteps-2);
+  Eigen::VectorXd slack_init(3*(nsteps-1));
   Problem nlp;
 
   //read in initial values
@@ -29,33 +29,83 @@ int main()
   const char *trajPath = trajPathStr.c_str();
   init_trajfile.open(trajPath);
   if (!init_trajfile) {
-    std::cout << "No trajectory file found, starting from user input guess.";
+    std::cout << "No trajectory file found, starting from user input guess.\n";
     nlp.AddVariableSet  (std::make_shared<ExVariables>(ndof*nsteps, "position"));
     nlp.AddVariableSet  (std::make_shared<ExVariables>(ndof*nsteps, "velocity"));
     nlp.AddVariableSet  (std::make_shared<ExVariables>(n_control*nsteps, "effort"));
     nlp.AddVariableSet  (std::make_shared<ExVariables>(n_exforce*nsteps, "exforce"));
-    nlp.AddVariableSet  (std::make_shared<ExVariables>(2*nsteps-2, "slack"));
+    nlp.AddVariableSet  (std::make_shared<ExVariables>(3*(nsteps-1), "slack"));
   } else {
-    std::cout << "Found trajectory from previous iteration.";
+    std::cout << "Found trajectory from previous iteration.\n";
     std::string line;
     double value;
     getline(init_trajfile, line);
+    // {std::istringstream ss (line);
+    // for(int i = 0; i < ndof*nsteps; i++){
+    //   ss >> value;
+    //   q_init(i) = value;
+    // }}
+    // getline(init_trajfile, line);
+    // {std::istringstream ss (line);
+    // for(int i = 0; i < ndof*nsteps; i++){
+    //   ss >> value;
+    //   q_dot_init(i) = value;
+    // }}
+    // getline(init_trajfile, line);
+    // {std::istringstream ss (line);
+    // for(int i = 0; i < n_control*nsteps; i++){
+    //   ss >> value;
+    //   control_init(i) = value;
+    // }}
     {std::istringstream ss (line);
-    for(int i = 0; i < ndof*nsteps; i++){
+    for(int i = 0; i < nsteps; i++){
+      q_init(ndof*i) = 0;
       ss >> value;
-      q_init(i) = value;
+      q_init(ndof*i+1) = value;
+      ss >> value;
+      q_init(ndof*i+2) = value;
+      ss >> value;
+      q_init(ndof*i+3) = value;
+      // q_init(ndof*i+4) = 1.57;
+      // q_init(ndof*i+5) = 0;
+      ss >> value;
+      q_init(ndof*i+4) = value;
+      ss >> value;
+      q_init(ndof*i+5) = value;
+      ss >> value;
+      q_init(ndof*i+6) = value;
     }}
     getline(init_trajfile, line);
     {std::istringstream ss (line);
-    for(int i = 0; i < ndof*nsteps; i++){
+    for(int i = 0; i < nsteps; i++){
+      q_dot_init(ndof*i) = 0;
       ss >> value;
-      q_dot_init(i) = value;
+      q_dot_init(ndof*i+1) = value;
+      ss >> value;
+      q_dot_init(ndof*i+2) = value;
+      ss >> value;
+      q_dot_init(ndof*i+3) = value;
+      // q_dot_init(ndof*i+4) = 0;
+      // q_dot_init(ndof*i+5) = 0;
+      ss >> value;
+      q_dot_init(ndof*i+4) = value;
+      ss >> value;
+      q_dot_init(ndof*i+5) = value;
+      ss >> value;
+      q_dot_init(ndof*i+6) = value;
     }}
     getline(init_trajfile, line);
     {std::istringstream ss (line);
-    for(int i = 0; i < n_control*nsteps; i++){
+    for(int i = 0; i < nsteps; i++){
+      control_init(n_control*i) = 0;
       ss >> value;
-      control_init(i) = value;
+      control_init(n_control*i+1) = value;
+      ss >> value;
+      control_init(n_control*i+2) = value;
+      ss >> value;
+      control_init(n_control*i+3) = value;
+      // control_init(n_control*i+4) = 0;
+      // control_init(n_control*i+5) = 0;
     }}
     getline(init_trajfile, line);
     {std::istringstream ss (line);
@@ -65,7 +115,7 @@ int main()
     }}
     getline(init_trajfile, line);
     {std::istringstream ss (line);
-    for(int i = 0; i < (2*nsteps-2); i++){
+    for(int i = 0; i < 3*(nsteps-1); i++){
       ss >> value;
       slack_init(i) = value;
     }}
@@ -73,7 +123,7 @@ int main()
     nlp.AddVariableSet  (std::make_shared<ExVariables>(ndof*nsteps, "velocity", q_dot_init));
     nlp.AddVariableSet  (std::make_shared<ExVariables>(n_control*nsteps, "effort", control_init));
     nlp.AddVariableSet  (std::make_shared<ExVariables>(n_exforce*nsteps, "exforce", exforce_init));
-    nlp.AddVariableSet  (std::make_shared<ExVariables>(2*nsteps-2, "slack", slack_init));
+    nlp.AddVariableSet  (std::make_shared<ExVariables>(3*(nsteps-1), "slack", slack_init));
   }
 
   nlp.AddConstraintSet(std::make_shared<ExConstraint>(2*ndof*(nsteps-1)+3*(nsteps-1)));

@@ -10,9 +10,9 @@ box_urdf: "/urdf/box.urdf"
 # n_exforce: 1
 # box_goal: [0.65, 0]
 
-n_dof: 9
+n_dof: 6
 n_step: 40
 t_step: 0.05
-n_control: 6
+n_control: 3
 n_exforce: 1
 box_goal: [0.65, 0]

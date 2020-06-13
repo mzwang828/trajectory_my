@@ -58,18 +58,23 @@ public:
     // the initial values where the NLP starts iterating from
     if (name == "position") {
       for (int i = 0; i < n_step; i++){
+        // xvar(i*n_dof) =  0;
+        // xvar(i*n_dof+1) = -1.0 + i * (1.0/n_step);
+        // xvar(i*n_dof+2) = 1.86 - i * (1.86/n_step);
+        // xvar(i*n_dof+3) = -0.8 + i * (0.8/n_step);
+        // xvar(i*n_dof+4) = 1.57;
+        // xvar(i*n_dof+5) = 0;
+        // xvar(i*n_dof+6) = 0.43 + i * (0.10/n_step);
+        // xvar(i*n_dof+7) = 0.131073;
+        // xvar(i*n_dof+8) = 0;
+
+        // xvar(i*n_dof) =  0;
         xvar(i*n_dof) =  -1.0 + i * (1.0/n_step);
         xvar(i*n_dof+1) = 1.86 - i * (1.86/n_step);
         xvar(i*n_dof+2) = -0.8 + i * (0.8/n_step);
         xvar(i*n_dof+3) = 0.43 + i * (0.10/n_step);
         xvar(i*n_dof+4) = 0.131073;
         xvar(i*n_dof+5) = 0;
-        // xvar(i*n_dof) =  0;
-        // xvar(i*n_dof+1) = 0;
-        // xvar(i*n_dof+2) = 0;
-        // xvar(i*n_dof+3) = 0;
-        // xvar(i*n_dof+4) = 0.131073;
-        // xvar(i*n_dof+5) = 0;
       }
       // for (int i = 0; i < n; i++)
       //   xvar(i) = 0.0;
@@ -122,15 +127,21 @@ public:
     if (GetName() == "position") {
       for (int i = 0; i < GetRows(); i++)
         bounds.at(i) = Bounds(-position_lim, position_lim);
+      // bounds.at(0) = Bounds(0, 0);
+      // bounds.at(1) = Bounds(-1.0, -1.0);
+      // bounds.at(2) = Bounds(1.86, 1.86);
+      // bounds.at(3) = Bounds(-0.8, -0.8);
+      // bounds.at(4) = Bounds(1.57, 1.57);
+      // bounds.at(5) = Bounds(0, 0);
+      // bounds.at(6) = Bounds(0.43, 0.43);
+      // bounds.at(7) = Bounds(0.131073, 0.131073);
+      // bounds.at(8) = Bounds(0, 0);
       bounds.at(0) = Bounds(-1.0, -1.0);
       bounds.at(1) = Bounds(1.86, 1.86);
       bounds.at(2) = Bounds(-0.8, -0.8);
       bounds.at(3) = Bounds(0.43, 0.43);
       bounds.at(4) = Bounds(0.131073, 0.131073);
       bounds.at(5) = Bounds(0, 0);
-      // bounds.at(6) = Bounds(0.50, 0.50);
-      // bounds.at(7) = Bounds(0.3, 0.3);
-      // bounds.at(8) = Bounds(0, 0);
       bounds.at(GetRows() - 3) = Bounds(0.53, 0.53);
       // bounds.at(GetRows() - 2) = Bounds(0.3, 0.3);
     } else if (GetName() == "velocity") {
@@ -141,8 +152,12 @@ public:
       for (int i = GetRows() - n_dof; i < GetRows(); i++)
         bounds.at(i) = Bounds(0, 0);
     } else if (GetName() == "effort") {
-      for (int i = 0; i < GetRows(); i++)
-        bounds.at(i) = Bounds(-effort_lim, effort_lim);
+      for (int i = 0; i < n_step; i ++){
+        // bounds.at(i*n_control) = Bounds(-330, 330);
+        bounds.at(i*n_control) = Bounds(-330, 330);
+        bounds.at(i*n_control+1) = Bounds(-150, 150);
+        bounds.at(i*n_control+2) = Bounds(-54, 54);
+      }
     } else if (GetName() == "exforce") {
       for (int i = 0; i < GetRows(); i++)
         bounds.at(i) = Bounds(0, force_lim); // NOTE
@@ -164,7 +179,7 @@ private:
   double t_step;                // length of each step
   double position_lim = 3.14;
   double velocity_lim = 5;
-  double effort_lim = 100;
+  double effort_lim = 200;
   double force_lim = 100;
 };
 
@@ -181,6 +196,7 @@ public:
   pinocchio::PairIndex cp_index;
   pinocchio::FrameIndex contactId, object_contactId;
   Eigen::Vector3d front_normal; // normal vector point to the front plane
+  Eigen::Vector3d robot_contact_normal;
   mutable Eigen::MatrixXd J_remapped; // used to save calculated Jacobians for exforce
   mutable Eigen::MatrixXd fext_robot, fext_object; // used to save fext values for each joint
   // Input Mapping & Friction
@@ -195,6 +211,7 @@ public:
   ExConstraint(int n) : ExConstraint(n, "constraint1") {}
   ExConstraint(int n, const std::string &name) : ConstraintSet(n, name) {
     front_normal << 1, 0, 0;
+    robot_contact_normal << 1, 0, 0;
     // build the pusher model
     pinocchio::urdf::buildModel(robot_filename, robot_model);
     // build the box model
@@ -247,7 +264,8 @@ public:
     B.setZero();
     B.topRows(n_control).setIdentity();
     f.resize(n_dof);
-    f << 0.0, 0.0, 0.0, 0.5, 0.0, 0.0;  
+    f.setZero();
+    f.tail(3) << 0.5, 0.0, 0.0;  
   }
 
   void setRootJointBounds(pinocchio::Model &model,
@@ -353,7 +371,7 @@ public:
       //       data_next.oMi[model.getJointId("wrist_1_joint")].rotation().transpose() * 
       //       front_normal_world + w_J_object.topRows(3).transpose() * front_normal;
 
-      J_remapped.col(i) = w_J_contact.topRows(3).transpose() * front_normal + w_J_object.topRows(3).transpose() * front_normal;
+      J_remapped.col(i) = w_J_contact.topRows(3).transpose() * robot_contact_normal + w_J_object.topRows(3).transpose() * front_normal;
       // Calculate NLE, inertial matrix
       pinocchio::nonLinearEffects(model, data_next, q_next,
                                   vel.segment(n_dof * (i + 1), n_dof));
@@ -367,7 +385,7 @@ public:
       // contact force in [wrist_3_joint] frame at [contact] point
       // force_cp = -(data_next.oMi[model.getJointId("wrist_1_joint")].rotation().transpose() *
       //              front_normal_world * exforce(i + 1));
-      force_cp = front_normal * exforce(i+1);
+      force_cp = robot_contact_normal * exforce(i+1);
       // Get force and moment at [joint_origin] point
       fext_robot.col(i).head(3) = force_cp;
       fext_robot.col(i)(3) = -robot_r_j2c(2) * force_cp(1) + robot_r_j2c(1) * force_cp(2);
@@ -427,7 +445,7 @@ public:
       //    -std::min(-slack(i), 0.0) * slack(n_step - 1 + i);
       // complimentray
       g(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i) =
-          slack(i) * slack(n_step - 1 + i);
+          slack(i) * slack(n_step - 1 + i) - slack( 2 * (n_step-1) + i);
     }
     return g;
   };
@@ -442,7 +460,7 @@ public:
       bounds.at(n_dof * 2 * (n_step - 1) + i) = Bounds(0.0, 0.0);
       bounds.at(n_dof * 2 * (n_step - 1) + n_step - 1 + i) = Bounds(0.0, 0.0);
       bounds.at(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i) =
-          Bounds(0, 0);
+          Bounds(-inf, 0);
     }
     return bounds;
   }
@@ -554,6 +572,7 @@ public:
         triplet_slack.push_back(T(n_dof * 2 * (n_step - 1) + n_step - 1 + i, n_step - 1 + i, -1));
         triplet_slack.push_back(T(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i, i, slack(n_step - 1 + i)));
         triplet_slack.push_back(T(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i, n_step - 1 + i, slack(i)));
+        triplet_slack.push_back(T(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i, 2 * (n_step - 1) + i, -1));
       }
     } 
     if (var_set == "position") {
@@ -582,6 +601,8 @@ public:
   double GetCost() const override {
     VectorXd pos = GetVariables()->GetComponent("position")->GetValues();
     VectorXd torque = GetVariables()->GetComponent("effort")->GetValues();
+    VectorXd slack = GetVariables()->GetComponent("slack")->GetValues();
+
     int n = GetVariables()->GetComponent("effort")->GetRows();
     Eigen::VectorXd vec(n);
     for (int i = 0; i < n; i++) {
@@ -592,12 +613,17 @@ public:
     Eigen::MatrixXd weight(n, n);
     weight = vec.asDiagonal();
     double cost = (torque.transpose() * weight) * torque;
+
+    // penalty on slack
+    int m = GetVariables()->GetComponent("slack")->GetRows()/3;
+    float slack_weight = 10;
+    cost = cost + slack_weight * slack.segment(m*2, m).squaredNorm();
     
     return cost;
   };
 
     void FillJacobianBlock(std::string var_set, Jacobian &jac) const override {
-      if (var_set == "effort"){
+    if (var_set == "effort"){
       VectorXd torque = GetVariables()->GetComponent("effort")->GetValues();
       int n = GetVariables()->GetComponent("effort")->GetRows();
       std::vector<T> triplet_cost;
@@ -607,6 +633,15 @@ public:
       }
       triplet_cost.push_back(T(0,n-1,torque(n-1)));
       jac.setFromTriplets(triplet_cost.begin(), triplet_cost.end());
+    }
+    if (var_set == "slack"){
+      VectorXd slack = GetVariables()->GetComponent("slack")->GetValues();
+      int n = GetVariables()->GetComponent("slack")->GetRows()/3;
+      std::vector<T> triplet_slack;
+      for(int i = 0; i < n; i++){
+        triplet_slack.push_back(T(0,2*n+i,10* 2*slack(2*n+i)));
+      }
+      jac.setFromTriplets(triplet_slack.begin(), triplet_slack.end());
     }
   }
 };
