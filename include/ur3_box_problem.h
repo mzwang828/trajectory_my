@@ -162,9 +162,10 @@ public:
       for (int i = 0; i < GetRows(); i++)
         bounds.at(i) = Bounds(0, force_lim); // NOTE
     } else if (GetName() == "slack") {
-      for (int i = 0; i < GetRows() / 2; i++) {
+      for (int i = 0; i < GetRows() / 3; i++) {
         bounds.at(i) = Bounds(0, inf);                       // distance slack
-        bounds.at(GetRows() / 2 + i) = Bounds(0, force_lim); // force slack
+        bounds.at(GetRows() / 3 + i) = Bounds(0, force_lim); // force slack
+        bounds.at(2 * GetRows() / 3 + i) = Bounds(0, inf);
       }
     }
     return bounds;
@@ -616,8 +617,8 @@ public:
 
     // penalty on slack
     int m = GetVariables()->GetComponent("slack")->GetRows()/3;
-    float slack_weight = 10;
-    cost = cost + slack_weight * slack.segment(m*2, m).squaredNorm();
+    float slack_weight = 1e4;
+    cost = cost + slack_weight * slack.segment(m*2, m).lpNorm<1>();
     
     return cost;
   };
@@ -639,7 +640,7 @@ public:
       int n = GetVariables()->GetComponent("slack")->GetRows()/3;
       std::vector<T> triplet_slack;
       for(int i = 0; i < n; i++){
-        triplet_slack.push_back(T(0,2*n+i,10* 2*slack(2*n+i)));
+        triplet_slack.push_back(T(0,2*n+i,1e4));
       }
       jac.setFromTriplets(triplet_slack.begin(), triplet_slack.end());
     }
