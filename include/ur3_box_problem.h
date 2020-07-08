@@ -617,8 +617,9 @@ public:
 
     // penalty on slack
     int m = GetVariables()->GetComponent("slack")->GetRows()/3;
-    float slack_weight = 1e4;
+    float slack_weight = 1e8;
     cost = cost + slack_weight * slack.segment(m*2, m).lpNorm<1>();
+    // cost = slack_weight * slack.segment(m*2, m).lpNorm<1>();
     
     return cost;
   };
@@ -640,7 +641,7 @@ public:
       int n = GetVariables()->GetComponent("slack")->GetRows()/3;
       std::vector<T> triplet_slack;
       for(int i = 0; i < n; i++){
-        triplet_slack.push_back(T(0,2*n+i,1e4));
+        triplet_slack.push_back(T(0,2*n+i,1e8));
       }
       jac.setFromTriplets(triplet_slack.begin(), triplet_slack.end());
     }
