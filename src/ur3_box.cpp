@@ -2,7 +2,7 @@
 #include <fstream>
 #include <ifopt/problem.h>
 #include <ifopt/snopt_solver.h>
-#include "ur3_box_problem.h"
+#include "ur3_box_fulldof.h"
 #include <yaml-cpp/yaml.h>
 
 using namespace ifopt;
@@ -34,7 +34,7 @@ int main()
     nlp.AddVariableSet  (std::make_shared<ExVariables>(ndof*nsteps, "velocity"));
     nlp.AddVariableSet  (std::make_shared<ExVariables>(n_control*nsteps, "effort"));
     nlp.AddVariableSet  (std::make_shared<ExVariables>(n_exforce*nsteps, "exforce"));
-    nlp.AddVariableSet  (std::make_shared<ExVariables>(3*(nsteps-1), "slack"));
+    nlp.AddVariableSet  (std::make_shared<ExVariables>(1*(nsteps-1), "slack"));
   } else {
     std::cout << "Found trajectory from previous iteration.\n";
     std::string line;
@@ -123,10 +123,10 @@ int main()
     nlp.AddVariableSet  (std::make_shared<ExVariables>(ndof*nsteps, "velocity", q_dot_init));
     nlp.AddVariableSet  (std::make_shared<ExVariables>(n_control*nsteps, "effort", control_init));
     nlp.AddVariableSet  (std::make_shared<ExVariables>(n_exforce*nsteps, "exforce", exforce_init));
-    nlp.AddVariableSet  (std::make_shared<ExVariables>(3*(nsteps-1), "slack", slack_init));
+    nlp.AddVariableSet  (std::make_shared<ExVariables>(1*(nsteps-1), "slack", slack_init));
   }
 
-  nlp.AddConstraintSet(std::make_shared<ExConstraint>(2*ndof*(nsteps-1)+3*(nsteps-1)));
+  nlp.AddConstraintSet(std::make_shared<ExConstraint>(2*ndof*(nsteps-1)+1*(nsteps-1)));
   nlp.AddCostSet      (std::make_shared<ExCost>());
   nlp.PrintCurrent();
 
