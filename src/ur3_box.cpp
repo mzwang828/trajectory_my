@@ -20,13 +20,15 @@ int main()
   Eigen::VectorXd q_dot_init(ndof*nsteps);
   Eigen::VectorXd control_init(n_control*nsteps);
   Eigen::VectorXd exforce_init(n_exforce*nsteps);
-  Eigen::VectorXd slack_init(3*(nsteps-1));
+  Eigen::VectorXd slack_init(2*(nsteps-1));
   Problem nlp;
 
   //read in initial values
   std::ifstream init_trajfile;
   std::string trajPathStr = "/home/mzwang/catkin_ws/src/trajectory_my/logs/trajectory.txt";
+  std::string urtrajPathStr = "/home/mzwang/catkin_ws/src/trajectory_my/logs/urtrajectory.txt";
   const char *trajPath = trajPathStr.c_str();
+  const char *urtrajPath = urtrajPathStr.c_str();
   init_trajfile.open(trajPath);
   if (!init_trajfile) {
     std::cout << "No trajectory file found, starting from user input guess.\n";
@@ -40,73 +42,73 @@ int main()
     std::string line;
     double value;
     getline(init_trajfile, line);
-    // {std::istringstream ss (line);
-    // for(int i = 0; i < ndof*nsteps; i++){
-    //   ss >> value;
-    //   q_init(i) = value;
-    // }}
-    // getline(init_trajfile, line);
-    // {std::istringstream ss (line);
-    // for(int i = 0; i < ndof*nsteps; i++){
-    //   ss >> value;
-    //   q_dot_init(i) = value;
-    // }}
-    // getline(init_trajfile, line);
-    // {std::istringstream ss (line);
-    // for(int i = 0; i < n_control*nsteps; i++){
-    //   ss >> value;
-    //   control_init(i) = value;
-    // }}
     {std::istringstream ss (line);
-    for(int i = 0; i < nsteps; i++){
-      q_init(ndof*i) = 0;
+    for(int i = 0; i < ndof*nsteps; i++){
       ss >> value;
-      q_init(ndof*i+1) = value;
-      ss >> value;
-      q_init(ndof*i+2) = value;
-      ss >> value;
-      q_init(ndof*i+3) = value;
-      // q_init(ndof*i+4) = 1.57;
-      // q_init(ndof*i+5) = 0;
-      ss >> value;
-      q_init(ndof*i+4) = value;
-      ss >> value;
-      q_init(ndof*i+5) = value;
-      ss >> value;
-      q_init(ndof*i+6) = value;
+      q_init(i) = value;
     }}
     getline(init_trajfile, line);
     {std::istringstream ss (line);
-    for(int i = 0; i < nsteps; i++){
-      q_dot_init(ndof*i) = 0;
+    for(int i = 0; i < ndof*nsteps; i++){
       ss >> value;
-      q_dot_init(ndof*i+1) = value;
-      ss >> value;
-      q_dot_init(ndof*i+2) = value;
-      ss >> value;
-      q_dot_init(ndof*i+3) = value;
-      // q_dot_init(ndof*i+4) = 0;
-      // q_dot_init(ndof*i+5) = 0;
-      ss >> value;
-      q_dot_init(ndof*i+4) = value;
-      ss >> value;
-      q_dot_init(ndof*i+5) = value;
-      ss >> value;
-      q_dot_init(ndof*i+6) = value;
+      q_dot_init(i) = value;
     }}
     getline(init_trajfile, line);
     {std::istringstream ss (line);
-    for(int i = 0; i < nsteps; i++){
-      control_init(n_control*i) = 0;
+    for(int i = 0; i < n_control*nsteps; i++){
       ss >> value;
-      control_init(n_control*i+1) = value;
-      ss >> value;
-      control_init(n_control*i+2) = value;
-      ss >> value;
-      control_init(n_control*i+3) = value;
-      // control_init(n_control*i+4) = 0;
-      // control_init(n_control*i+5) = 0;
+      control_init(i) = value;
     }}
+    // {std::istringstream ss (line);
+    // for(int i = 0; i < nsteps; i++){
+    //   q_init(ndof*i) = 0;
+    //   ss >> value;
+    //   q_init(ndof*i+1) = value;
+    //   ss >> value;
+    //   q_init(ndof*i+2) = value;
+    //   ss >> value;
+    //   q_init(ndof*i+3) = value;
+    //   // q_init(ndof*i+4) = 1.57;
+    //   // q_init(ndof*i+5) = 0;
+    //   ss >> value;
+    //   q_init(ndof*i+4) = value;
+    //   ss >> value;
+    //   q_init(ndof*i+5) = value;
+    //   ss >> value;
+    //   q_init(ndof*i+6) = value;
+    // }}
+    // getline(init_trajfile, line);
+    // {std::istringstream ss (line);
+    // for(int i = 0; i < nsteps; i++){
+    //   q_dot_init(ndof*i) = 0;
+    //   ss >> value;
+    //   q_dot_init(ndof*i+1) = value;
+    //   ss >> value;
+    //   q_dot_init(ndof*i+2) = value;
+    //   ss >> value;
+    //   q_dot_init(ndof*i+3) = value;
+    //   // q_dot_init(ndof*i+4) = 0;
+    //   // q_dot_init(ndof*i+5) = 0;
+    //   ss >> value;
+    //   q_dot_init(ndof*i+4) = value;
+    //   ss >> value;
+    //   q_dot_init(ndof*i+5) = value;
+    //   ss >> value;
+    //   q_dot_init(ndof*i+6) = value;
+    // }}
+    // getline(init_trajfile, line);
+    // {std::istringstream ss (line);
+    // for(int i = 0; i < nsteps; i++){
+    //   control_init(n_control*i) = 0;
+    //   ss >> value;
+    //   control_init(n_control*i+1) = value;
+    //   ss >> value;
+    //   control_init(n_control*i+2) = value;
+    //   ss >> value;
+    //   control_init(n_control*i+3) = value;
+    //   // control_init(n_control*i+4) = 0;
+    //   // control_init(n_control*i+5) = 0;
+    // }}
     getline(init_trajfile, line);
     {std::istringstream ss (line);
     for(int i = 0; i < n_exforce*nsteps; i++){
@@ -115,7 +117,7 @@ int main()
     }}
     getline(init_trajfile, line);
     {std::istringstream ss (line);
-    for(int i = 0; i < 3*(nsteps-1); i++){
+    for(int i = 0; i < 2*(nsteps-1); i++){
       ss >> value;
       slack_init(i) = value;
     }}
@@ -172,5 +174,28 @@ int main()
     std::cout << " WARNING: Unable to open the trajectory file.\n";
   }
   trajFile.close();
+
+  // write the UR trajectory for execution
+  std::ofstream urtrajFile;
+  urtrajFile.open(urtrajPath);
+  if (urtrajFile.is_open()){
+    for(int i=0; i<nsteps; i++){
+      urtrajFile << i*tstep << ",";
+      for (int j = 0; j < ndof; j++){
+        urtrajFile << Q(j, i) << ",";        
+      }
+      for (int j = 0; j < ndof; j++){
+        urtrajFile << Q_dot(j, i) << ",";        
+      }    
+      for (int j = 0; j < n_control; j++){
+        urtrajFile << C(j, i) << ",";
+      }
+      urtrajFile << "\n";
+    }
+  }
+  else{
+    std::cout << " WARNING: Unable to open the UR trajectory file.\n";
+  }
+  urtrajFile.close();
 
 }
