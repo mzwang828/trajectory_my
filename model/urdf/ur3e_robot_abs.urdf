@@ -219,14 +219,14 @@
   <joint name="ee_fixed_joint" type="fixed">
     <parent link="wrist_3_link"/>
     <child link="ee_link"/>
-    <origin rpy="0.0 0.0 1.57079632679" xyz="0.0 0.092 0.0"/>
+    <origin rpy="-1.57079632679 0.0 0.0" xyz="0.0 0.092 0.0"/>
   </joint>
   <link name="ee_link">
     <collision>
       <geometry>
         <sphere radius="1e-10"/>
       </geometry>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <origin rpy="0 0 0" xyz="-0.005 0 0"/>
     </collision>
   </link>
   <transmission name="shoulder_pan_trans">

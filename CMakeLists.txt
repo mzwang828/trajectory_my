@@ -3,6 +3,8 @@ project(trajectory_my)
 
 ## Compile as C++11, supported in ROS Kinetic and newer
 add_compile_options(-std=c++11)
+set(CMAKE_BUILD_TYPE "Release")
+
 # add_definitions("-DBOOST_MPL_LIMIT_LIST_SIZE=30")
 
 ## Find catkin macros and libraries
