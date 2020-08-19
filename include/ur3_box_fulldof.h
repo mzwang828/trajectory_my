@@ -59,31 +59,31 @@ public:
     xvar = Eigen::VectorXd::Zero(n);
     // the initial values where the NLP starts iterating from
     if (name == "position") {
-      for (int i = 0; i < n_step/2; i++){
-        xvar(i*n_dof) =  0;
-        xvar(i*n_dof+1) = -1.0 + i * (0.42*2/n_step);
-        xvar(i*n_dof+2) = 1.86 - i * (0.43*2/n_step);
-        xvar(i*n_dof+3) = -0.8 - i * (0.3*2/n_step);
-        xvar(i*n_dof+4) = 1.57;
-        xvar(i*n_dof+5) = 0;
-        xvar(i*n_dof+6) = 0.49;
-        xvar(i*n_dof+7) = 0.131073;
-        xvar(i*n_dof+8) = 0;
-      }
-      for (int i = n_step/2; i < n_step; i++){
+      // for (int i = 0; i < n_step/2; i++){
+      //   xvar(i*n_dof) =  0;
+      //   xvar(i*n_dof+1) = -1.0 + i * (0.42*2/n_step);
+      //   xvar(i*n_dof+2) = 1.86 - i * (0.43*2/n_step);
+      //   xvar(i*n_dof+3) = -0.8 - i * (0.3*2/n_step);
+      //   xvar(i*n_dof+4) = 1.57;
+      //   xvar(i*n_dof+5) = 0;
+      //   xvar(i*n_dof+6) = 0.49;
+      //   xvar(i*n_dof+7) = 0.131073;
+      //   xvar(i*n_dof+8) = 0;
+      // }
+      // for (int i = n_step/2; i < n_step; i++){
 
-        xvar(i*n_dof) =  0;
-        xvar(i*n_dof+1) = -0.58;
-        xvar(i*n_dof+2) = 1.43;
-        xvar(i*n_dof+3) = -0.83;
-        xvar(i*n_dof+4) = 1.57;
-        xvar(i*n_dof+5) = 0;
-        xvar(i*n_dof+6) = 0.49 + (i - n_step/2) * (0.14*2/n_step);
-        xvar(i*n_dof+7) = 0.131073;
-        xvar(i*n_dof+8) = 0;
-      }
-      // for (int i = 0; i < n; i++)
-      //   xvar(i) = 0.0;
+      //   xvar(i*n_dof) =  0;
+      //   xvar(i*n_dof+1) = -0.58;
+      //   xvar(i*n_dof+2) = 1.43;
+      //   xvar(i*n_dof+3) = -0.83;
+      //   xvar(i*n_dof+4) = 1.57;
+      //   xvar(i*n_dof+5) = 0;
+      //   xvar(i*n_dof+6) = 0.49 + (i - n_step/2) * (0.14*2/n_step);
+      //   xvar(i*n_dof+7) = 0.131073;
+      //   xvar(i*n_dof+8) = 0;
+      // }
+      for (int i = 0; i < n; i++)
+        xvar(i) = 0.0;
     } else if (name == "velocity") {
       for (int i = 0; i < n; i++)
         xvar(i) = 0.0;
@@ -271,7 +271,7 @@ public:
     B.topRows(n_control).setIdentity();
     f.resize(n_dof);
     f.setZero();
-    f.tail(3) << 0.5, 0.0, 0.0;  
+    f.tail(3) << 1.0, 0.0, 0.0;  
 
     distance_cache.resize(n_step);
     distance_cache.setZero();
@@ -395,7 +395,7 @@ public:
       pinocchio::getFrameJacobian(model, data_next, contactId, pinocchio::LOCAL,
                                   w_J_contact);
       pinocchio::getFrameJacobian(model, data_next, object_contactId,
-                                  pinocchio::LOCAL_WORLD_ALIGNED, w_J_object);
+                                  pinocchio::LOCAL, w_J_object);
       // J_remapped.col(i) = w_J_contact.topRows(3).transpose() * 
       //       data_next.oMi[model.getJointId("wrist_1_joint")].rotation().transpose() * 
       //       front_normal_world + w_J_object.topRows(3).transpose() * front_normal;
@@ -661,7 +661,7 @@ public:
     // penalty on slack
     int m = GetVariables()->GetComponent("slack")->GetRows();
     float slack_weight = 1e4;
-    cost = cost + slack_weight * slack.segment(0, m).lpNorm<1>();
+    cost = cost + slack_weight * slack.squaredNorm();
 
     return cost;
   };
@@ -683,7 +683,9 @@ public:
       int n = GetVariables()->GetComponent("slack")->GetRows();
       std::vector<T> triplet_slack;
       for(int i = 0; i < n; i++){
-        triplet_slack.push_back(T(0,i,1e4));
+        // triplet_slack.push_back(T(0,i,1e4));
+        // triplet_slack.push_back(T(0,i,1e4 * slack(i) / slack.lpNorm<2>()));
+        triplet_slack.push_back(T(0,i,1e4 * 2 * slack(i)));
       }
       jac.setFromTriplets(triplet_slack.begin(), triplet_slack.end());
     }

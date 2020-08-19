@@ -145,14 +145,14 @@ int main()
   Eigen::Map<Eigen::MatrixXd> C(variables.segment(2*ndof*nsteps, n_control*nsteps).data(), n_control, nsteps);
   Eigen::Map<Eigen::MatrixXd> F(variables.segment(2*ndof*nsteps+n_control*nsteps, n_exforce*nsteps).data(), n_exforce, nsteps);
   Eigen::Map<Eigen::MatrixXd> d_slack(variables.segment(2*ndof*nsteps+n_control*nsteps + n_exforce*nsteps, nsteps - 1).data(), 1, nsteps - 1);
-  Eigen::Map<Eigen::MatrixXd> f_slack(variables.segment(2*ndof*nsteps+n_control*nsteps + n_exforce*nsteps + nsteps - 1, nsteps - 1).data(), 1, nsteps - 1);
+  // Eigen::Map<Eigen::MatrixXd> f_slack(variables.segment(2*ndof*nsteps+n_control*nsteps + n_exforce*nsteps + nsteps - 1, nsteps - 1).data(), 1, nsteps - 1);
 
   std::cout << "Q: \n" << Q << std::endl;
   std::cout << "Q_dot: \n" << Q_dot << std::endl;
   std::cout << "C: \n" << C << std::endl;
   std::cout << "eF: \n" << F << std::endl;
   std::cout << "distance_slack: \n" << d_slack << std::endl;
-  std::cout << "force_slack: \n" << f_slack << std::endl;
+  // std::cout << "force_slack: \n" << f_slack << std::endl;
 
   Eigen::VectorXd Q_save = nlp.GetOptVariables()->GetComponent("position")->GetValues();
   Eigen::VectorXd Q_dot_save = nlp.GetOptVariables()->GetComponent("velocity")->GetValues();
