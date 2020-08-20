@@ -15,4 +15,4 @@ n_step: 20
 t_step: 0.05
 n_control: 6
 n_exforce: 1
-box_goal_x: 0.63
+box_goal_x: 0.59

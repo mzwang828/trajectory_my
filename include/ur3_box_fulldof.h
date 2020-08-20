@@ -83,7 +83,7 @@ public:
       //   xvar(i*n_dof+8) = 0;
       // }
       for (int i = 0; i < n; i++)
-        xvar(i) = 0.0;
+        xvar(i) = 0.3;
     } else if (name == "velocity") {
       for (int i = 0; i < n; i++)
         xvar(i) = 0.0;
@@ -95,7 +95,7 @@ public:
         xvar(i) = 0;
     } else if (name == "slack") {
       for (int i = 0; i < n; i++) {
-        xvar(i) = 0;
+        xvar(i) = 1e-2;
       }
     }
   }
@@ -166,8 +166,7 @@ public:
         bounds.at(i) = Bounds(0, force_lim); // NOTE
     } else if (GetName() == "slack") {
       for (int i = 0; i < GetRows(); i++) {
-        bounds.at(i) = Bounds(0, 1e-2);                       // distance slack
-        // bounds.at(GetRows()/2 + i) = Bounds(0, 1e-2);         // phi*gamma < slack
+        bounds.at(i) = Bounds(0, 1e-2);                       // phi*gamma < slack
       }
     }
     return bounds;
@@ -661,12 +660,13 @@ public:
     // penalty on slack
     int m = GetVariables()->GetComponent("slack")->GetRows();
     float slack_weight = 1e4;
-    cost = cost + slack_weight * slack.squaredNorm();
+    // cost = cost + slack_weight * slack.squaredNorm();
+    cost = cost + slack_weight * slack.norm();
 
     return cost;
   };
 
-    void FillJacobianBlock(std::string var_set, Jacobian &jac) const override {
+  void FillJacobianBlock(std::string var_set, Jacobian &jac) const override {
     if (var_set == "velocity"){
       VectorXd vel = GetVariables()->GetComponent("velocity")->GetValues();
       int n = GetVariables()->GetComponent("velocity")->GetRows();
@@ -684,8 +684,8 @@ public:
       std::vector<T> triplet_slack;
       for(int i = 0; i < n; i++){
         // triplet_slack.push_back(T(0,i,1e4));
-        // triplet_slack.push_back(T(0,i,1e4 * slack(i) / slack.lpNorm<2>()));
-        triplet_slack.push_back(T(0,i,1e4 * 2 * slack(i)));
+        triplet_slack.push_back(T(0,i,1e4 * slack(i) / slack.norm()));
+        // triplet_slack.push_back(T(0,i,1e4 * 2 * slack(i)));
       }
       jac.setFromTriplets(triplet_slack.begin(), triplet_slack.end());
     }
