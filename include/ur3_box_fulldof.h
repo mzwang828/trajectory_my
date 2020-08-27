@@ -165,8 +165,9 @@ public:
       for (int i = 0; i < GetRows(); i++)
         bounds.at(i) = Bounds(0, force_lim); // NOTE
     } else if (GetName() == "slack") {
-      for (int i = 0; i < GetRows(); i++) {
-        bounds.at(i) = Bounds(0, 1e-2);                       // phi*gamma < slack
+      for (int i = 0; i < GetRows()/2; i++) {
+        bounds.at(i) = Bounds(0, inf);                        // distance 
+        bounds.at(GetRows()/2 + i) = Bounds(0, 1e-2);                       // phi*gamma < slack
       }
     }
     return bounds;
@@ -476,9 +477,9 @@ public:
       //     J_remapped.col(i) * exforce(i + 1) + f * tanh(20 * vel(n_dof * (i) + 3)));
 
       // Contact constraints, 3 constraints for each step
-      g(n_dof * 2 * (n_step - 1) + i) = distance * exforce(i + 1) - slack(i);
-      // g(n_dof * 2 * (n_step - 1) + n_step - 1 + i) =
-      //     exforce(i + 1) - slack(n_step - 1 + i);
+      g(n_dof * 2 * (n_step - 1) + i) = distance - slack(i);
+      g(n_dof * 2 * (n_step - 1) + n_step - 1 + i) =
+          exforce(i + 1) * slack(i) - slack(n_step - 1 + i);
       // state-trigger
       // g(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i) =
       //    -std::min(-slack(i), 0.0) * slack(n_step - 1 + i);
@@ -498,8 +499,8 @@ public:
     for (int i = 0; i < n_dof * 2 * (n_step - 1); i++)
       bounds.at(i) = Bounds(0.0, 0.0);
     for (int i = 0; i < n_step - 1; i++) {
-      bounds.at(n_dof * 2 * (n_step - 1) + i) = Bounds(-inf, 0.0);
-      // bounds.at(n_dof * 2 * (n_step - 1) + n_step - 1 + i) = Bounds(-inf, 0);
+      bounds.at(n_dof * 2 * (n_step - 1) + i) = Bounds(0.0, 0.0);
+      bounds.at(n_dof * 2 * (n_step - 1) + n_step - 1 + i) = Bounds(-inf, 0);
       // bounds.at(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i) =
       //     Bounds(-inf, 0);
     }
@@ -607,12 +608,12 @@ public:
         }
       }
       if (var_set == "exforce") {
-        triplet_exforce.push_back(T(n_dof * 2 * (n_step - 1) + i, i + 1, distance_cache(i)));
+        triplet_exforce.push_back(T(n_dof * 2 * (n_step - 1) + n_step - 1 + i, i + 1, slack(i)));
       }
       if (var_set == "slack") {
         triplet_slack.push_back(T(n_dof * 2 * (n_step - 1) + i, i, -1));
-        // triplet_slack.push_back(T(n_dof * 2 * (n_step - 1) + n_step - 1 + i, i, exforce(i + 1)));
-        // triplet_slack.push_back(T(n_dof * 2 * (n_step - 1) + n_step - 1 + i, n_step - 1 + i, -1));
+        triplet_slack.push_back(T(n_dof * 2 * (n_step - 1) + n_step - 1 + i, i, exforce(i + 1)));
+        triplet_slack.push_back(T(n_dof * 2 * (n_step - 1) + n_step - 1 + i, n_step - 1 + i, -1));
         // triplet_slack.push_back(T(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i, i, slack(n_step - 1 + i)));
         // triplet_slack.push_back(T(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i, n_step - 1 + i, slack(i)));
         // triplet_slack.push_back(T(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i, 2 * (n_step - 1) + i, -1));
@@ -639,7 +640,12 @@ public:
 class ExCost : public CostTerm {
 public:
   ExCost() : ExCost("cost_term1") {}
-  ExCost(const std::string &name) : CostTerm(name) {}
+  ExCost(const std::string &name) : CostTerm(name) {
+    YAML::Node params = YAML::LoadFile(
+        "/home/mzwang/catkin_ws/src/trajectory_my/Config/params.yaml");
+    cost_func_type = params["cost_func_type"].as<int>();
+    n_step = params["n_step"].as<int>();
+    }
 
   double GetCost() const override {
     VectorXd vel = GetVariables()->GetComponent("velocity")->GetValues();
@@ -658,10 +664,19 @@ public:
     double cost = (vel.transpose() * weight) * vel;
     
     // penalty on slack
-    int m = GetVariables()->GetComponent("slack")->GetRows();
     float slack_weight = 1e4;
-    // cost = cost + slack_weight * slack.squaredNorm();
-    cost = cost + slack_weight * slack.norm();
+    switch (cost_func_type)
+    {
+    case 0:
+      cost = cost + slack_weight * slack.tail(n_step-1).squaredNorm();
+      break;
+    case 1:
+      cost = cost + slack_weight * slack.tail(n_step-1).lpNorm<1>();
+      break;
+    case 2:
+      cost = cost + slack_weight * slack.tail(n_step-1).norm();
+      break;
+    }
 
     return cost;
   };
@@ -680,16 +695,36 @@ public:
     }
     if (var_set == "slack"){
       VectorXd slack = GetVariables()->GetComponent("slack")->GetValues();
-      int n = GetVariables()->GetComponent("slack")->GetRows();
       std::vector<T> triplet_slack;
-      for(int i = 0; i < n; i++){
-        // triplet_slack.push_back(T(0,i,1e4));
-        triplet_slack.push_back(T(0,i,1e4 * slack(i) / slack.norm()));
-        // triplet_slack.push_back(T(0,i,1e4 * 2 * slack(i)));
+      switch (cost_func_type)
+      {
+      case 0:
+        for (int i = 0; i < n_step - 1; i++)
+        {
+          triplet_slack.push_back(T(0, n_step-1 + i, 1e4 * 2 * slack(n_step - 1 + i)));
+        }
+        break;
+      case 1:
+        for (int i = 0; i < n_step - 1; i++)
+        {
+          triplet_slack.push_back(T(0, n_step-1 + i, 1e4));
+        }
+        break;
+      case 2:
+        for (int i = 0; i < n_step - 1; i++)
+        {
+          triplet_slack.push_back(T(0, n_step-1 + i, 1e4 * slack(n_step - 1 + i) / slack.tail(n_step - 1).norm()));
+        }
+        break;
       }
       jac.setFromTriplets(triplet_slack.begin(), triplet_slack.end());
     }
   }
+
+
+private:
+  int cost_func_type;
+  int n_step;
 };
 
 } // namespace ifopt

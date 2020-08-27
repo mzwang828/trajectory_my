@@ -36,7 +36,7 @@ int main()
     nlp.AddVariableSet  (std::make_shared<ExVariables>(ndof*nsteps, "velocity"));
     nlp.AddVariableSet  (std::make_shared<ExVariables>(n_control*nsteps, "effort"));
     nlp.AddVariableSet  (std::make_shared<ExVariables>(n_exforce*nsteps, "exforce"));
-    nlp.AddVariableSet  (std::make_shared<ExVariables>(1*(nsteps-1), "slack"));
+    nlp.AddVariableSet  (std::make_shared<ExVariables>(2*(nsteps-1), "slack"));
   } else {
     std::cout << "Found trajectory from previous iteration.\n";
     std::string line;
@@ -128,7 +128,7 @@ int main()
     nlp.AddVariableSet  (std::make_shared<ExVariables>(1*(nsteps-1), "slack", slack_init));
   }
 
-  nlp.AddConstraintSet(std::make_shared<ExConstraint>(2*ndof*(nsteps-1)+1*(nsteps-1)));
+  nlp.AddConstraintSet(std::make_shared<ExConstraint>(2*ndof*(nsteps-1)+2*(nsteps-1)));
   nlp.AddCostSet      (std::make_shared<ExCost>());
   nlp.PrintCurrent();
 
@@ -145,14 +145,14 @@ int main()
   Eigen::Map<Eigen::MatrixXd> C(variables.segment(2*ndof*nsteps, n_control*nsteps).data(), n_control, nsteps);
   Eigen::Map<Eigen::MatrixXd> F(variables.segment(2*ndof*nsteps+n_control*nsteps, n_exforce*nsteps).data(), n_exforce, nsteps);
   Eigen::Map<Eigen::MatrixXd> d_slack(variables.segment(2*ndof*nsteps+n_control*nsteps + n_exforce*nsteps, nsteps - 1).data(), 1, nsteps - 1);
-  // Eigen::Map<Eigen::MatrixXd> f_slack(variables.segment(2*ndof*nsteps+n_control*nsteps + n_exforce*nsteps + nsteps - 1, nsteps - 1).data(), 1, nsteps - 1);
+  Eigen::Map<Eigen::MatrixXd> f_slack(variables.segment(2*ndof*nsteps+n_control*nsteps + n_exforce*nsteps + nsteps - 1, nsteps - 1).data(), 1, nsteps - 1);
 
   std::cout << "Q: \n" << Q << std::endl;
   std::cout << "Q_dot: \n" << Q_dot << std::endl;
   std::cout << "C: \n" << C << std::endl;
   std::cout << "eF: \n" << F << std::endl;
   std::cout << "distance_slack: \n" << d_slack << std::endl;
-  // std::cout << "force_slack: \n" << f_slack << std::endl;
+  std::cout << "force*distance slack: \n" << f_slack << std::endl;
 
   Eigen::VectorXd Q_save = nlp.GetOptVariables()->GetComponent("position")->GetValues();
   Eigen::VectorXd Q_dot_save = nlp.GetOptVariables()->GetComponent("velocity")->GetValues();
