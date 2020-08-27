@@ -399,7 +399,7 @@
   <joint name="box_rotate" type="revolute">
     <parent link="axis2"/>
     <child link="box"/>
-    <origin xyz="0 0 0"/>
+    <origin xyz="0 0 0.05"/>
     <axis xyz="0 0 1"/>
     <limit effort="1000.0" lower="-6.28318530718" upper="6.28318530718" velocity="1.0"/>
   </joint>
