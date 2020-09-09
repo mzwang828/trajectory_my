@@ -652,16 +652,7 @@ public:
     VectorXd torque = GetVariables()->GetComponent("effort")->GetValues();
     VectorXd slack = GetVariables()->GetComponent("slack")->GetValues();
 
-    int n = GetVariables()->GetComponent("velocity")->GetRows();
-    Eigen::VectorXd vec(n);
-    for (int i = 0; i < n; i++) {
-      vec(i) = 1;
-    }
-    vec(0) = 0.5;
-    vec(vec.size() - 1) = 0.5;
-    Eigen::MatrixXd weight(n, n);
-    weight = vec.asDiagonal();
-    double cost = (vel.transpose() * weight) * vel;
+    double cost = vel.squaredNorm();
     
     // penalty on slack
     float slack_weight = 1e4;
@@ -686,11 +677,9 @@ public:
       VectorXd vel = GetVariables()->GetComponent("velocity")->GetValues();
       int n = GetVariables()->GetComponent("velocity")->GetRows();
       std::vector<T> triplet_cost;
-      triplet_cost.push_back(T(0,0,vel(0)));
-      for(int i = 1; i < n-1; i++){
+      for(int i = 0; i < n; i++){
         triplet_cost.push_back(T(0,i,2*vel(i)));
       }
-      triplet_cost.push_back(T(0,n-1,vel(n-1)));
       jac.setFromTriplets(triplet_cost.begin(), triplet_cost.end());
     }
     if (var_set == "slack"){
