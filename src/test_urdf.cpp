@@ -130,64 +130,75 @@ int main(int argc, char ** argv)
 {
   using namespace pinocchio;
   
+  // You should change here to set up your own URDF file or just pass it as an argument of this example.
   const std::string urdf_filename =
       PINOCCHIO_MODEL_DIR + std::string("/urdf/ur3e_robot_abs.urdf");
-  Model urmodel;
-  pinocchio::urdf::buildModel(urdf_filename, urmodel);
-  Eigen::VectorXd urq = randomConfiguration(urmodel);
-  std::cout << urmodel << "\n";
-  Data urdata(urmodel);
-  Eigen::VectorXd urv(6);
-  //derivative test
-  computeAllTerms(urmodel, urdata, urq, urv);
-  Eigen::VectorXd urtau(6);
-  urq << 0.5, -0.47, -0.32, -1.97, 0.97, -0.47;
-  urv << 0.1,0.1,0.1,0.1,0.1,0.1;
-  urtau << 0,0,0,0,0,0;
-  std::cout << "check joints: " << urmodel.njoints << "\n";
-  PINOCCHIO_ALIGNED_STD_VECTOR(pinocchio::Force) urfext((size_t)urmodel.njoints, pinocchio::Force::Zero());
-  pinocchio::Force::Vector3 tz = pinocchio::Force::Vector3::Zero();
-  pinocchio::Force::Vector3 ty = pinocchio::Force::Vector3::Zero();
-  ty[0] = 0.1;
-  tz[2] = 0.8;
-  std::cout << "check force: \n";
-  for (pinocchio::Force f : urfext) std::cout << f << "\n"; 
-  computeMinverse(urmodel, urdata, urq);
-  Eigen::MatrixXd M = urdata.M;
-  Eigen::MatrixXd Minv = urdata.Minv;
-  M.triangularView<Eigen::StrictlyLower>() = M.transpose().triangularView<Eigen::StrictlyLower>();
-  Minv.triangularView<Eigen::StrictlyLower>() = Minv.transpose().triangularView<Eigen::StrictlyLower>();
-  std::cout << "check m1: \n" << M << "\n";
-  std::cout << "check minv1 : \n" << Minv << "\n";
-  std::cout << "multiplication: \n " << M * Minv << "\n";
-  aba(urmodel, urdata, urq, urv, urtau);
-  std::cout << "check acceleration: " << urdata.ddq.transpose() << "\n";
-  computeABADerivatives(urmodel, urdata, urq, urv, urtau);
-  // std::cout << "check if nle: " << urdata.nle << "\n";
-  // std::cout << "check derivative ddq_dq: \n" << urdata.ddq_dq<< "\n";
-  // std::cout << "check derivative ddq_dv: \n" << urdata.ddq_dv << "\n";
-  // std::cout << "check m: \n" << urdata.M << "\n";
-  // std::cout << "check derivative minv: \n" << urdata.Minv << "\n";
-  // std::cout << "multiplication: \n " << M * urdata.Minv << "\n";
+  const std::string box_filename =
+      PINOCCHIO_MODEL_DIR + std::string("/urdf/box.urdf");
+  
+  // Load the robot urdf model
+  Model robot_model, box_model, model;
+  pinocchio::urdf::buildModel(urdf_filename, robot_model);
+  // pinocchio::Model::Index contactId =  model.addFrame(
+  //                                   pinocchio::Frame("contactPoint", 
+  //                                   model.getJointId("base_to_pusher"), 
+  //                                   -1, 
+  //                                   pinocchio::SE3::Identity(), 
+  //                                   pinocchio::OP_FRAME));
+  // pinocchio::JointIndex joint_index = model.joints.size();
+  // pinocchio::FrameIndex frame_index = model.nframes;
+  // load the box urdf model
+  pinocchio::urdf::buildModel(box_filename, JointModelPlanar(), box_model);
+  // pinocchio::urdf::buildModel(box_filename, JointModelFreeFlyer(), box_model);
+  setRootJointBounds(box_model, 1, "planar"); // root joint is with joint_index 1
+  box_model.frames[1].name = "box_root_joint"; // index of root joint is 1. 0 = universe
+  box_model.names[1] = "box_root_joint";
+  pinocchio::appendModel(box_model, robot_model, 0, pinocchio::SE3::Identity(), model);
+  // for (std::string& n : model.names) std::cout << n << "\n" ;
+  for (Frame& f : model.frames) std::cout << f.name << "\n";
+  pinocchio::Model::Index contactId =  model.addFrame(
+                                    pinocchio::Frame("contactPoint", 
+                                    model.getJointId("wrist_3_joint"), 
+                                    -1, 
+                                    pinocchio::SE3::Identity(), 
+                                    pinocchio::OP_FRAME));
+  pinocchio::Model::Index object_contactId =  model.addFrame(
+                                  pinocchio::Frame("object_contactPoint", 
+                                  model.getJointId("box_root_joint"), 
+                                  -1, 
+                                  pinocchio::SE3::Identity(), 
+                                  pinocchio::OP_FRAME));
+  std::cout << "------\n";
+  std::cout << model;
 
-  urtau << 0.0,0.0,0.0,0.0,0.0,0.1;
-  std::cout << "tau: " << urtau.transpose() << "\n";
-  aba(urmodel, urdata, urq, urv, urtau, urfext);
-  std::cout << "acceleration with tau: " << urdata.ddq.transpose() << "\n";
-  computeABADerivatives(urmodel, urdata, urq, urv, urtau);
-  std::cout << "check derivative ddq_dq: \n" << urdata.ddq_dq<< "\n";
-  // std::cout << "check derivative ddq_dv: \n" << urdata.ddq_dv << "\n";
+  GeometryModel geom_model, box_geom_model;
+  pinocchio::urdf::buildGeom(model, urdf_filename, pinocchio::COLLISION, geom_model, PINOCCHIO_MODEL_DIR);
+  pinocchio::urdf::buildGeom(model, box_filename, pinocchio::COLLISION, box_geom_model, PINOCCHIO_MODEL_DIR);
+  // setPrefix("box", ground_model, ground_geom_model, 0, 0);
+  // pinocchio::appendModel(model, ground_model, geom_model, ground_geom_model, 0, pinocchio::SE3::Identity(), fused_model, fused_geom_model);
+  pinocchio::appendGeometryModel(geom_model, box_geom_model);
+  // std::cout << geom_model << "\n";
+  // // Add all possible collision pairs and remove the ones collected in the SRDF file
+  // geom_model.addAllCollisionPairs();
+  // pinocchio::srdf::removeCollisionPairs(model, geom_model, srdf_filename);
+  GeomIndex tip_id = geom_model.getGeometryId("ee_link_0");
+  GeomIndex box_id = geom_model.getGeometryId("obj_front_0");
+  CollisionPair cp = CollisionPair(tip_id, box_id);
+  geom_model.addCollisionPair(cp);
+  PairIndex cp_index = geom_model.findCollisionPair(cp);
+  
+  Data data(model);
+  GeometryData geom_data(geom_model);
+  Eigen::VectorXd q = randomConfiguration(model);
 
-  // urfext[1].angular(tz);
-  // urfext[2].angular(ty);
-  urfext[6].angular(ty);
-  for (pinocchio::Force f : urfext) std::cout << f << "\n"; 
-  urtau << 0,0,0,0,0,0;
-  aba(urmodel, urdata, urq, urv, urtau, urfext);
-  std::cout << "acceleration with fext: " << urdata.ddq.transpose() << "\n";
-  computeABADerivatives(urmodel, urdata, urq, urv, urtau, urfext);
-  std::cout << "check derivative ddq_dq: \n" << urdata.ddq_dq<< "\n";
-  // std::cout << "check derivative ddq_dv: \n" << urdata.ddq_dv << "\n";
+  q << 0,0,0,0,0,0, 1.0, 0, cos(0.5), sin(0.5);
 
+  framesForwardKinematics(model, data, q);
+  pinocchio::SE3 root_joint_frame_placement = data.oMf[model.getFrameId("box_root_joint")];
+  pinocchio::SE3 root_joint_placement = data.oMi[model.getJointId("box_root_joint")];
+
+  std::cout << "frame: " << root_joint_frame_placement << "\n";
+  std::cout << "frame: " << root_joint_placement << "\n";
+  
 
 }

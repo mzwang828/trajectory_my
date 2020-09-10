@@ -204,6 +204,7 @@ public:
   mutable Eigen::VectorXd distance_cache; 
   mutable Eigen::MatrixXd J_remapped; // used to save calculated Jacobians for exforce
   mutable Eigen::MatrixXd fext_robot, fext_object; // used to save fext values for each joint
+  mutable Eigen::MatrixXd dDistance_dq; // numerical gradients for distance
   // Input Mapping & Friction
   Eigen::MatrixXd B;
   Eigen::VectorXd f;
@@ -275,6 +276,9 @@ public:
 
     distance_cache.resize(n_step);
     distance_cache.setZero();
+
+    dDistance_dq.resize(n_step, n_dof);
+    dDistance_dq.setZero();
   }
 
   void setRootJointBounds(pinocchio::Model &model,
@@ -353,11 +357,47 @@ public:
       fcl_distance_normal.normalize();
       
       Eigen::Vector3d front_normal_world =
-          data.oMf[model.getFrameId("box")].rotation() *
+          data.oMi[model.getJointId("box_root_joint")].rotation() *
           front_normal;
 
       double distance =
       ((fcl_distance_normal.transpose() * front_normal_world > 0) ? distRes.min_distance : -distRes.min_distance);
+
+      // numerical difference to get dDistance_dq
+      double alpha = 1e-8;
+      Eigen::VectorXd pos_eps(model.nv);
+      pos_eps = pos.segment(n_dof * i , n_dof);
+      for(int k = 0; k < model.nv; ++k)
+      {
+        pos_eps[k] += alpha;
+        Eigen::VectorXd q_eps(model.nq);
+        q_eps.segment(0, n_dof-1) = pos_eps.segment(0, n_dof - 1);
+        q_eps(model.nq - 2) = cos(pos_eps(n_dof - 1));
+        q_eps(model.nq - 1) = sin(pos_eps(n_dof - 1));
+
+        pinocchio::framesForwardKinematics(model, data, q_eps);
+        ee_rotation = data.oMf[model.getFrameId("ee_link")].rotation();
+        ee_translation = data.oMf[model.getFrameId("ee_link")].translation();
+        box_front_rotation = data.oMf[model.getFrameId("obj_front")].rotation();
+        box_front_translation = data.oMf[model.getFrameId("obj_front")].translation();
+        ee_tf.setTransform(ee_rotation, ee_translation);
+        box_front_tf.setTransform(box_front_rotation, box_front_translation);
+        fcl_ee.setTransform(ee_tf); fcl_box_front.setTransform(box_front_tf);
+        hpp::fcl::distance(&fcl_ee, &fcl_box_front, distReq, distRes);
+        fcl_distance_normal = distRes.nearest_points[1] - distRes.nearest_points[0];
+        fcl_distance_normal.normalize();
+        front_normal_world =
+          data.oMi[model.getJointId("box_root_joint")].rotation() *
+          front_normal;
+        double distance_plus = 
+        ((fcl_distance_normal.transpose() * front_normal_world > 0) ? distRes.min_distance : -distRes.min_distance);
+
+        dDistance_dq(i, k) = (distance_plus - distance) / alpha;
+      
+        pos_eps[k] -= alpha;
+      }
+
+
 
       // Update the contact point frame
       // pinocchio::computeCollisions(model, data_next, geom_model, geom_data,
@@ -571,6 +611,7 @@ public:
                                     n_dof * (i + 1) + k,
                                     -data_next.ddq_dq(j, k))); // ddq_dq_k+1
           }
+          triplet_pos.push_back(T(n_dof * 2 * (n_step - 1) + i, n_dof * i + j, dDistance_dq(i, j))); //dDistance_k+1_dq_k+1
         }
         if (var_set == "velocity") {
           // Triplet for velocity
