@@ -331,7 +331,8 @@ public:
       q_next(model.nq - 1) = sin(pos(n_dof * (i + 1) + n_dof - 1));
 
       // calculate signed distance
-      pinocchio::framesForwardKinematics(model, data, q);
+      // pinocchio::framesForwardKinematics(model, data, q);
+      pinocchio::framesForwardKinematics(model, data, q_next);
       hpp::fcl::Matrix3f ee_rotation, box_front_rotation;
       hpp::fcl::Vec3f ee_translation, box_front_translation;
       ee_rotation = data.oMf[model.getFrameId("ee_link")].rotation();
@@ -366,7 +367,7 @@ public:
       // numerical difference to get dDistance_dq
       double alpha = 1e-8;
       Eigen::VectorXd pos_eps(model.nv);
-      pos_eps = pos.segment(n_dof * i , n_dof);
+      pos_eps = pos.segment(n_dof * (i+1) , n_dof);
       for(int k = 0; k < model.nv; ++k)
       {
         pos_eps[k] += alpha;
@@ -611,7 +612,7 @@ public:
                                     n_dof * (i + 1) + k,
                                     -data_next.ddq_dq(j, k))); // ddq_dq_k+1
           }
-          triplet_pos.push_back(T(n_dof * 2 * (n_step - 1) + i, n_dof * i + j, dDistance_dq(i, j))); //dDistance_k+1_dq_k+1
+          triplet_pos.push_back(T(n_dof * 2 * (n_step - 1) + i, n_dof * (i+1) + j, dDistance_dq(i, j))); //dDistance_k+1_dq_k+1
         }
         if (var_set == "velocity") {
           // Triplet for velocity
