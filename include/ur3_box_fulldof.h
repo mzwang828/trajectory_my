@@ -204,7 +204,7 @@ public:
   mutable Eigen::VectorXd distance_cache; 
   mutable Eigen::MatrixXd J_remapped; // used to save calculated Jacobians for exforce
   mutable Eigen::MatrixXd fext_robot, fext_object; // used to save fext values for each joint
-  mutable Eigen::MatrixXd dDistance_dq; // numerical gradients for distance
+  mutable Eigen::MatrixXd dDistance_box_dq, dDistance_front_dq; // numerical gradients for distance
   // Input Mapping & Friction
   Eigen::MatrixXd B;
   Eigen::VectorXd f;
@@ -277,8 +277,10 @@ public:
     distance_cache.resize(n_step);
     distance_cache.setZero();
 
-    dDistance_dq.resize(n_step, n_dof);
-    dDistance_dq.setZero();
+    dDistance_box_dq.resize(n_step, n_dof);
+    dDistance_box_dq.setZero();
+    dDistance_front_dq.resize(n_step, n_dof);
+    dDistance_front_dq.setZero();
   }
 
   void setRootJointBounds(pinocchio::Model &model,
@@ -333,36 +335,35 @@ public:
       // calculate signed distance
       // pinocchio::framesForwardKinematics(model, data, q);
       pinocchio::framesForwardKinematics(model, data, q_next);
-      hpp::fcl::Matrix3f ee_rotation, box_front_rotation;
-      hpp::fcl::Vec3f ee_translation, box_front_translation;
+      Eigen::Matrix3d ee_rotation, box_front_rotation, box_root_rotation;
+      Eigen::Vector3d ee_translation, box_front_translation, box_root_translation;
       ee_rotation = data.oMf[model.getFrameId("ee_link")].rotation();
       ee_translation = data.oMf[model.getFrameId("ee_link")].translation();
       box_front_rotation = data.oMf[model.getFrameId("obj_front")].rotation();
       box_front_translation = data.oMf[model.getFrameId("obj_front")].translation();
+      box_root_rotation = data.oMf[model.getFrameId("box")].rotation();
+      box_root_translation = data.oMf[model.getFrameId("box")].translation();
+      
 
+      boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_box_geom (new hpp::fcl::Box (0.1,0.1,0.1));
       boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_ee_geom (new hpp::fcl::Sphere (0.005));
       boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_box_front_geom (new hpp::fcl::Sphere (0.005));
-      hpp::fcl::Transform3f ee_tf(ee_rotation, ee_translation), box_front_tf(box_front_rotation, box_front_translation);
 
-      hpp::fcl::CollisionObject fcl_ee(fcl_ee_geom, ee_tf);
-      hpp::fcl::CollisionObject fcl_box_front(fcl_box_front_geom, box_front_tf);
+      hpp::fcl::CollisionObject fcl_box(fcl_box_geom, box_root_rotation, box_root_translation);
+      hpp::fcl::CollisionObject fcl_ee(fcl_ee_geom, ee_rotation, ee_translation);
+      hpp::fcl::CollisionObject fcl_box_front(fcl_box_front_geom, box_front_rotation, box_front_translation);
+      
       hpp::fcl::DistanceRequest distReq;
       hpp::fcl::DistanceResult distRes;
 
       distReq.enable_nearest_points = true;
 
+      // distance between EE and box, needs to be constrained as positive (no penetration)
+      hpp::fcl::distance(&fcl_ee, &fcl_box, distReq, distRes);
+      double distance_box = distRes.min_distance;
+      // distance between EE and front plane, used in force constraints
       hpp::fcl::distance(&fcl_ee, &fcl_box_front, distReq, distRes);
-
-      Eigen::Vector3d fcl_distance_normal;
-      fcl_distance_normal = distRes.nearest_points[1] - distRes.nearest_points[0];
-      fcl_distance_normal.normalize();
-      
-      Eigen::Vector3d front_normal_world =
-          data.oMi[model.getJointId("box_root_joint")].rotation() *
-          front_normal;
-
-      double distance =
-      ((fcl_distance_normal.transpose() * front_normal_world > 0) ? distRes.min_distance : -distRes.min_distance);
+      double distance_front = distRes.min_distance;
 
       // numerical difference to get dDistance_dq
       double alpha = 1e-8;
@@ -381,19 +382,17 @@ public:
         ee_translation = data.oMf[model.getFrameId("ee_link")].translation();
         box_front_rotation = data.oMf[model.getFrameId("obj_front")].rotation();
         box_front_translation = data.oMf[model.getFrameId("obj_front")].translation();
-        ee_tf.setTransform(ee_rotation, ee_translation);
-        box_front_tf.setTransform(box_front_rotation, box_front_translation);
-        fcl_ee.setTransform(ee_tf); fcl_box_front.setTransform(box_front_tf);
+        box_root_rotation = data.oMf[model.getFrameId("box")].rotation();
+        box_root_translation = data.oMf[model.getFrameId("box")].translation();
+        fcl_ee.setTransform(ee_rotation, ee_translation); 
+        fcl_box.setTransform(box_root_rotation, box_root_translation);
+        fcl_box_front.setTransform(box_front_rotation, box_front_translation);
+        hpp::fcl::distance(&fcl_ee, &fcl_box, distReq, distRes);
+        double distance_box_plus = distRes.min_distance;
         hpp::fcl::distance(&fcl_ee, &fcl_box_front, distReq, distRes);
-        fcl_distance_normal = distRes.nearest_points[1] - distRes.nearest_points[0];
-        fcl_distance_normal.normalize();
-        front_normal_world =
-          data.oMi[model.getJointId("box_root_joint")].rotation() *
-          front_normal;
-        double distance_plus = 
-        ((fcl_distance_normal.transpose() * front_normal_world > 0) ? distRes.min_distance : -distRes.min_distance);
-
-        dDistance_dq(i, k) = (distance_plus - distance) / alpha;
+        double distance_front_plus = distRes.min_distance;
+        dDistance_box_dq(i, k) = (distance_box_plus - distance_box) / alpha;
+        dDistance_front_dq(i, k) = (distance_front_plus - distance_front) / alpha;
       
         pos_eps[k] -= alpha;
       }
@@ -518,7 +517,7 @@ public:
       //     J_remapped.col(i) * exforce(i + 1) + f * tanh(20 * vel(n_dof * (i) + 3)));
 
       // Contact constraints, 3 constraints for each step
-      g(n_dof * 2 * (n_step - 1) + i) = distance - slack(i);
+      g(n_dof * 2 * (n_step - 1) + i) = distance_front - slack(i);
       g(n_dof * 2 * (n_step - 1) + n_step - 1 + i) =
           exforce(i + 1) * slack(i) - slack(n_step - 1 + i);
       // state-trigger
@@ -528,7 +527,10 @@ public:
       // g(n_dof * 2 * (n_step - 1) + 1 * (n_step - 1) + i) =
       //     slack(i) * exforce(i + 1) - slack(n_step - 1 + i);
 
-      distance_cache(i) = distance;
+      g(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i) =
+          distance_box;
+
+      distance_cache(i) = distance_front;
     }
     return g;
   };
@@ -542,8 +544,8 @@ public:
     for (int i = 0; i < n_step - 1; i++) {
       bounds.at(n_dof * 2 * (n_step - 1) + i) = Bounds(0.0, 0.0);
       bounds.at(n_dof * 2 * (n_step - 1) + n_step - 1 + i) = Bounds(-inf, 0);
-      // bounds.at(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i) =
-      //     Bounds(-inf, 0);
+      bounds.at(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i) =
+          Bounds(0, inf);
     }
     return bounds;
   }
@@ -612,7 +614,12 @@ public:
                                     n_dof * (i + 1) + k,
                                     -data_next.ddq_dq(j, k))); // ddq_dq_k+1
           }
-          triplet_pos.push_back(T(n_dof * 2 * (n_step - 1) + i, n_dof * (i+1) + j, dDistance_dq(i, j))); //dDistance_k+1_dq_k+1
+          triplet_pos.push_back(T(n_dof * 2 * (n_step - 1) + i, 
+                                  n_dof * (i+1) + j, 
+                                  dDistance_front_dq(i, j))); //dDistance_front_k+1_dq_k+1
+          triplet_pos.push_back(T(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i, 
+                                  n_dof * (i+1) + j, 
+                                  dDistance_box_dq(i, j))); //dDistance_box_k+1_dq_k+1
         }
         if (var_set == "velocity") {
           // Triplet for velocity

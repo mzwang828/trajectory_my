@@ -59,56 +59,6 @@ int main()
       ss >> value;
       control_init(i) = value;
     }}
-    // {std::istringstream ss (line);
-    // for(int i = 0; i < nsteps; i++){
-    //   q_init(ndof*i) = 0;
-    //   ss >> value;
-    //   q_init(ndof*i+1) = value;
-    //   ss >> value;
-    //   q_init(ndof*i+2) = value;
-    //   ss >> value;
-    //   q_init(ndof*i+3) = value;
-    //   // q_init(ndof*i+4) = 1.57;
-    //   // q_init(ndof*i+5) = 0;
-    //   ss >> value;
-    //   q_init(ndof*i+4) = value;
-    //   ss >> value;
-    //   q_init(ndof*i+5) = value;
-    //   ss >> value;
-    //   q_init(ndof*i+6) = value;
-    // }}
-    // getline(init_trajfile, line);
-    // {std::istringstream ss (line);
-    // for(int i = 0; i < nsteps; i++){
-    //   q_dot_init(ndof*i) = 0;
-    //   ss >> value;
-    //   q_dot_init(ndof*i+1) = value;
-    //   ss >> value;
-    //   q_dot_init(ndof*i+2) = value;
-    //   ss >> value;
-    //   q_dot_init(ndof*i+3) = value;
-    //   // q_dot_init(ndof*i+4) = 0;
-    //   // q_dot_init(ndof*i+5) = 0;
-    //   ss >> value;
-    //   q_dot_init(ndof*i+4) = value;
-    //   ss >> value;
-    //   q_dot_init(ndof*i+5) = value;
-    //   ss >> value;
-    //   q_dot_init(ndof*i+6) = value;
-    // }}
-    // getline(init_trajfile, line);
-    // {std::istringstream ss (line);
-    // for(int i = 0; i < nsteps; i++){
-    //   control_init(n_control*i) = 0;
-    //   ss >> value;
-    //   control_init(n_control*i+1) = value;
-    //   ss >> value;
-    //   control_init(n_control*i+2) = value;
-    //   ss >> value;
-    //   control_init(n_control*i+3) = value;
-    //   // control_init(n_control*i+4) = 0;
-    //   // control_init(n_control*i+5) = 0;
-    // }}
     getline(init_trajfile, line);
     {std::istringstream ss (line);
     for(int i = 0; i < n_exforce*nsteps; i++){
@@ -125,10 +75,10 @@ int main()
     nlp.AddVariableSet  (std::make_shared<ExVariables>(ndof*nsteps, "velocity", q_dot_init));
     nlp.AddVariableSet  (std::make_shared<ExVariables>(n_control*nsteps, "effort", control_init));
     nlp.AddVariableSet  (std::make_shared<ExVariables>(n_exforce*nsteps, "exforce", exforce_init));
-    nlp.AddVariableSet  (std::make_shared<ExVariables>(1*(nsteps-1), "slack", slack_init));
+    nlp.AddVariableSet  (std::make_shared<ExVariables>(2*(nsteps-1), "slack", slack_init));
   }
 
-  nlp.AddConstraintSet(std::make_shared<ExConstraint>(2*ndof*(nsteps-1)+2*(nsteps-1)));
+  nlp.AddConstraintSet(std::make_shared<ExConstraint>(2*ndof*(nsteps-1)+3*(nsteps-1)));
   nlp.AddCostSet      (std::make_shared<ExCost>());
   nlp.PrintCurrent();
 
