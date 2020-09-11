@@ -206,8 +206,7 @@ public:
   mutable Eigen::MatrixXd fext_robot, fext_object; // used to save fext values for each joint
   mutable Eigen::MatrixXd dDistance_box_dq, dDistance_front_dq; // numerical gradients for distance
   // Input Mapping & Friction
-  Eigen::MatrixXd B;
-  Eigen::VectorXd f;
+  Eigen::MatrixXd B, f;
   int n_dof;                    // number of freedom
   int n_control;                // number of control
   int n_exforce;                // number of external force
@@ -270,9 +269,12 @@ public:
     B.resize(n_dof, n_control);
     B.setZero();
     B.topRows(n_control).setIdentity();
-    f.resize(n_dof);
+
+    f.resize(n_dof, 3);
     f.setZero();
-    f.tail(3) << 1.0, 0.0, 0.0;  
+    f(6, 0) = 1.0;
+    f(7, 1) = 1.0;
+    f(8, 2) = 0.06;
 
     distance_cache.resize(n_step);
     distance_cache.setZero();
@@ -502,6 +504,10 @@ public:
                                       sin(pos(n_dof*(i+2) - 1)), cos(pos(n_dof*(i+2) - 1)), 0,
                                       0, 0, 1;
 
+      // box velocity vector for friction calculation
+      Eigen::Vector3d vf_box;
+      vf_box << tanh(20 * vel(n_dof * (i+1) - 3)), tanh(20 * vel(n_dof * (i+1) - 2)), tanh(20 * vel(n_dof * (i+1) - 1));
+
       // backward integration
       g.segment(n_dof * i, n_dof) =
           pos.segment(n_dof * i, n_dof) - pos.segment(n_dof * (i + 1), n_dof) +
@@ -512,7 +518,7 @@ public:
           1 / t_step *
               (vel.segment(n_dof * (i + 1), n_dof) -
                vel.segment(n_dof * i, n_dof)) - a_classical +
-          Minv * f * tanh(20 * vel(n_dof * (i+1) - 3));
+              Minv * f * vf_box;
 
       // g.segment(n_dof * (n_step - 1 + i), n_dof) =
       //     1 / t_step *
@@ -630,10 +636,24 @@ public:
           // Triplet for velocity
           triplet_vel.push_back(T(n_dof * (n_step - 1 + i) + j, n_dof * i + j,
                                   -1.0 / t_step)); // ddq_dv_k
+          // triplet_vel.push_back(T(n_dof * (n_step - 1 + i) + j, n_dof * (i+1) - 3,
+          //                         (Minv * f)(j) * 20 * 
+          //                             (1.0 - tanh(20 * vel(n_dof * (i+1) - 3)) *
+          //                                        tanh(20 * vel(n_dof * (i+1) - 3))))); // ddq_dv_k from smoothed friction term
+
           triplet_vel.push_back(T(n_dof * (n_step - 1 + i) + j, n_dof * (i+1) - 3,
-                                  (Minv * f)(j) * 20 * 
+                                  (Minv * f)(j, 0) * 20 * 
                                       (1.0 - tanh(20 * vel(n_dof * (i+1) - 3)) *
-                                                 tanh(20 * vel(n_dof * (i+1) - 3))))); // ddq_dv_k from smoothed friction term
+                                                 tanh(20 * vel(n_dof * (i+1) - 3))))); // ddq_dv_k from smoothed friction term x
+          triplet_vel.push_back(T(n_dof * (n_step - 1 + i) + j, n_dof * (i+1) - 2,
+                                  (Minv * f)(j, 1) * 20 * 
+                                      (1.0 - tanh(20 * vel(n_dof * (i+1) - 2)) *
+                                                 tanh(20 * vel(n_dof * (i+1) - 2))))); // ddq_dv_k from smoothed friction term y
+          triplet_vel.push_back(T(n_dof * (n_step - 1 + i) + j, n_dof * (i+1) - 1,
+                                  (Minv * f)(j, 2) * 20 * 
+                                      (1.0 - tanh(20 * vel(n_dof * (i+1) - 1)) *
+                                                 tanh(20 * vel(n_dof * (i+1) - 1))))); // ddq_dv_k from smoothed friction term rotation
+
           triplet_vel.push_back(T(n_dof * (n_step - 1 + i) + j,
                                   n_dof * i + j + n_dof,
                                   1.0 / t_step)); // ddq_dv_k+1
