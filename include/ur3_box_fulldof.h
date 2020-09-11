@@ -346,8 +346,11 @@ public:
       
 
       boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_box_geom (new hpp::fcl::Box (0.1,0.1,0.1));
+      // boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_ee_geom (new hpp::fcl::Cylinder (0.03, 0.00010));
+      boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_box_front_geom (new hpp::fcl::Box (0.00010,0.08,0.08));
+
       boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_ee_geom (new hpp::fcl::Sphere (0.005));
-      boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_box_front_geom (new hpp::fcl::Sphere (0.005));
+      // boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_box_front_geom (new hpp::fcl::Sphere (0.05));
 
       hpp::fcl::CollisionObject fcl_box(fcl_box_geom, box_root_rotation, box_root_translation);
       hpp::fcl::CollisionObject fcl_ee(fcl_ee_geom, ee_rotation, ee_translation);
@@ -364,6 +367,8 @@ public:
       // distance between EE and front plane, used in force constraints
       hpp::fcl::distance(&fcl_ee, &fcl_box_front, distReq, distRes);
       double distance_front = distRes.min_distance;
+      Eigen::Vector3d contact_point_ee = distRes.nearest_points[0];
+      Eigen::Vector3d contact_point_front = distRes.nearest_points[0];
 
       // numerical difference to get dDistance_dq
       double alpha = 1e-8;
@@ -418,8 +423,8 @@ public:
       pinocchio::SE3 root_joint_frame_placement =
           data_next.oMf[model.getFrameId("box_root_joint")];
 
-      // Eigen::Vector3d robot_r_j2c = joint_frame_placement.inverse().act(dr.nearest_points[0]);
-      // Eigen::Vector3d object_r_j2c = root_joint_frame_placement.inverse().act(dr.nearest_points[1]);
+      // Eigen::Vector3d robot_r_j2c = joint_frame_placement.inverse().act(contact_point_ee);
+      // Eigen::Vector3d object_r_j2c = root_joint_frame_placement.inverse().act(contact_point_front);
       Eigen::Vector3d robot_r_j2c(0.0, 0.092, 0.0);
       Eigen::Vector3d object_r_j2c(-0.05, 0, 0);
       model.frames[contactId].placement.translation() = robot_r_j2c;
