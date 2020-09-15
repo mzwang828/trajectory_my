@@ -274,7 +274,7 @@ public:
     f.setZero();
     f(6, 0) = 1.0;
     f(7, 1) = 1.0;
-    f(8, 2) = 0.01;
+    f(8, 2) = 0.06;
 
     distance_cache.resize(n_step);
     distance_cache.setZero();
@@ -366,11 +366,11 @@ public:
       // distance between EE and box, needs to be constrained as positive (no penetration)
       distRes.clear();
       hpp::fcl::distance(&fcl_ee, &fcl_box, distReq, distRes);
-      float distance_box = distRes.min_distance;
+      double distance_box = distRes.min_distance;
       // distance between EE and front plane, used in force constraints
       distRes.clear();
       hpp::fcl::distance(&fcl_ee, &fcl_box_front, distReq, distRes);
-      float distance_front = distRes.min_distance;
+      double distance_front = distRes.min_distance;
       Eigen::Vector3d contact_point_ee = distRes.nearest_points[0];
       Eigen::Vector3d contact_point_front = distRes.nearest_points[0];
 
@@ -398,10 +398,10 @@ public:
         fcl_box_front.setTransform(box_front_rotation, box_front_translation);
         distRes.clear();
         hpp::fcl::distance(&fcl_ee, &fcl_box, distReq, distRes);
-        float distance_box_plus = distRes.min_distance;
+        double distance_box_plus = distRes.min_distance;
         distRes.clear();
         hpp::fcl::distance(&fcl_ee, &fcl_box_front, distReq, distRes);
-        float distance_front_plus = distRes.min_distance;
+        double distance_front_plus = distRes.min_distance;
         dDistance_box_dq(i, k) = (distance_box_plus - distance_box) / alpha;
         dDistance_front_dq(i, k) = (distance_front_plus - distance_front) / alpha;
       
