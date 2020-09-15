@@ -274,7 +274,7 @@ public:
     f.setZero();
     f(6, 0) = 1.0;
     f(7, 1) = 1.0;
-    f(8, 2) = 0.06;
+    f(8, 2) = 0.01;
 
     distance_cache.resize(n_step);
     distance_cache.setZero();
@@ -348,10 +348,10 @@ public:
       
 
       boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_box_geom (new hpp::fcl::Box (0.1,0.1,0.1));
-      // boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_ee_geom (new hpp::fcl::Cylinder (0.03, 0.00010));
+      boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_ee_geom (new hpp::fcl::Cylinder (0.03, 0.00010));
       boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_box_front_geom (new hpp::fcl::Box (0.00010,0.08,0.08));
 
-      boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_ee_geom (new hpp::fcl::Sphere (0.005));
+      // boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_ee_geom (new hpp::fcl::Sphere (0.005));
       // boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_box_front_geom (new hpp::fcl::Sphere (0.05));
 
       hpp::fcl::CollisionObject fcl_box(fcl_box_geom, box_root_rotation, box_root_translation);
@@ -364,16 +364,18 @@ public:
       distReq.enable_nearest_points = true;
 
       // distance between EE and box, needs to be constrained as positive (no penetration)
+      distRes.clear();
       hpp::fcl::distance(&fcl_ee, &fcl_box, distReq, distRes);
-      double distance_box = distRes.min_distance;
+      float distance_box = distRes.min_distance;
       // distance between EE and front plane, used in force constraints
+      distRes.clear();
       hpp::fcl::distance(&fcl_ee, &fcl_box_front, distReq, distRes);
-      double distance_front = distRes.min_distance;
+      float distance_front = distRes.min_distance;
       Eigen::Vector3d contact_point_ee = distRes.nearest_points[0];
       Eigen::Vector3d contact_point_front = distRes.nearest_points[0];
 
       // numerical difference to get dDistance_dq
-      double alpha = 1e-8;
+      double alpha = 1e-6;
       Eigen::VectorXd pos_eps(model.nv);
       pos_eps = pos.segment(n_dof * (i+1) , n_dof);
       for(int k = 0; k < model.nv; ++k)
@@ -394,10 +396,12 @@ public:
         fcl_ee.setTransform(ee_rotation, ee_translation); 
         fcl_box.setTransform(box_root_rotation, box_root_translation);
         fcl_box_front.setTransform(box_front_rotation, box_front_translation);
+        distRes.clear();
         hpp::fcl::distance(&fcl_ee, &fcl_box, distReq, distRes);
-        double distance_box_plus = distRes.min_distance;
+        float distance_box_plus = distRes.min_distance;
+        distRes.clear();
         hpp::fcl::distance(&fcl_ee, &fcl_box_front, distReq, distRes);
-        double distance_front_plus = distRes.min_distance;
+        float distance_front_plus = distRes.min_distance;
         dDistance_box_dq(i, k) = (distance_box_plus - distance_box) / alpha;
         dDistance_front_dq(i, k) = (distance_front_plus - distance_front) / alpha;
       
