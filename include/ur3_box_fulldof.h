@@ -274,7 +274,7 @@ public:
     f.setZero();
     f(6, 0) = 1.0;
     f(7, 1) = 1.0;
-    f(8, 2) = 0.06;
+    f(8, 2) = 0.08;
 
     distance_cache.resize(n_step);
     distance_cache.setZero();
@@ -372,7 +372,7 @@ public:
       hpp::fcl::distance(&fcl_ee, &fcl_box_front, distReq, distRes);
       double distance_front = distRes.min_distance;
       Eigen::Vector3d contact_point_ee = distRes.nearest_points[0];
-      Eigen::Vector3d contact_point_front = distRes.nearest_points[0];
+      Eigen::Vector3d contact_point_front = distRes.nearest_points[1];
 
       // numerical difference to get dDistance_dq
       double alpha = 1e-6;
@@ -427,7 +427,7 @@ public:
       pinocchio::SE3 joint_frame_placement =
           data_next.oMf[model.getFrameId("wrist_3_joint")];
       pinocchio::SE3 root_joint_frame_placement =
-          data_next.oMf[model.getFrameId("box_root_joint")];
+          data_next.oMf[model.getFrameId("box")];
 
       // Eigen::Vector3d robot_r_j2c = joint_frame_placement.inverse().act(contact_point_ee);
       // Eigen::Vector3d object_r_j2c = root_joint_frame_placement.inverse().act(contact_point_front);
@@ -437,12 +437,9 @@ public:
       model.frames[object_contactId].placement.translation() = object_r_j2c;
       
       pinocchio::Data::Matrix6x w_J_contact(6, model.nv),
-          w_J_contact_aligned(6, model.nv), w_J_object_aligned(6, model.nv),
-          w_J_object(6, model.nv);
-      w_J_contact.fill(0);
-      w_J_object.fill(0);
-      w_J_contact_aligned.fill(0);
-      w_J_object_aligned.fill(0);
+                                w_J_object(6, model.nv);
+      w_J_contact.setZero();
+      w_J_object.setZero();
       pinocchio::getFrameJacobian(model, data_next, contactId, pinocchio::LOCAL,
                                   w_J_contact);
       pinocchio::getFrameJacobian(model, data_next, object_contactId,
@@ -523,6 +520,9 @@ public:
               (vel.segment(n_dof * (i + 1), n_dof) -
                vel.segment(n_dof * i, n_dof)) - a_classical +
               Minv * f * vf_box;
+      // std::cout << "check v_r: " << vel(n_dof * (i+1) - 1) << "\n";
+      // std::cout << "check velocity: " << vf_box.transpose() << "\n";
+      // std::cout << "check friction: " << (Minv * f * vf_box).transpose() << "\n";
 
       // g.segment(n_dof * (n_step - 1 + i), n_dof) =
       //     1 / t_step *

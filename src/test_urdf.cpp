@@ -305,6 +305,5 @@ int main(int argc, char ** argv)
 
   std::cout<< "dDistance_box_dq: " << dDistance_box_dq.transpose() << "\n";
   std::cout<< "dDistance_front_dq: " << dDistance_front_dq.transpose() << "\n";
-  
 
 }
