@@ -421,7 +421,6 @@ public:
       //     front_normal;
 
       // Get Contact Point Jacobian
-      pinocchio::computeJointJacobians(model, data_next, q_next);
       pinocchio::framesForwardKinematics(model, data_next, q_next);
       
       pinocchio::SE3 joint_frame_placement =
@@ -436,6 +435,9 @@ public:
       model.frames[contactId].placement.translation() = robot_r_j2c;
       model.frames[object_contactId].placement.translation() = object_r_j2c;
       
+      pinocchio::computeJointJacobians(model, data_next, q_next);
+      pinocchio::framesForwardKinematics(model, data_next, q_next);
+
       pinocchio::Data::Matrix6x w_J_contact(6, model.nv),
                                 w_J_object(6, model.nv);
       w_J_contact.setZero();
@@ -444,6 +446,7 @@ public:
                                   w_J_contact);
       pinocchio::getFrameJacobian(model, data_next, object_contactId,
                                   pinocchio::LOCAL, w_J_object);
+
       // J_remapped.col(i) = w_J_contact.topRows(3).transpose() * 
       //       data_next.oMi[model.getJointId("wrist_1_joint")].rotation().transpose() * 
       //       front_normal_world + w_J_object.topRows(3).transpose() * front_normal;
