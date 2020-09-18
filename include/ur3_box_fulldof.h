@@ -204,7 +204,8 @@ public:
   mutable Eigen::VectorXd distance_cache; 
   mutable Eigen::MatrixXd J_remapped; // used to save calculated Jacobians for exforce
   mutable Eigen::MatrixXd fext_robot, fext_object; // used to save fext values for each joint
-  mutable Eigen::MatrixXd dDistance_box_dq, dDistance_front_dq; // numerical gradients for distance
+  mutable Eigen::MatrixXd dDistance_box_dq, dDistance_front_dq,
+                          dDistance_left_dq, dDistance_right_dq; // numerical gradients for distance
   // Input Mapping & Friction
   Eigen::MatrixXd B, f;
   int n_dof;                    // number of freedom
@@ -283,6 +284,10 @@ public:
     dDistance_box_dq.setZero();
     dDistance_front_dq.resize(n_step, n_dof);
     dDistance_front_dq.setZero();
+    dDistance_left_dq.resize(n_step, n_dof);
+    dDistance_left_dq.setZero();
+    dDistance_right_dq.resize(n_step, n_dof);
+    dDistance_right_dq.setZero();
   }
 
   void setRootJointBounds(pinocchio::Model &model,
@@ -337,27 +342,32 @@ public:
       // calculate signed distance
       // pinocchio::framesForwardKinematics(model, data, q);
       pinocchio::framesForwardKinematics(model, data, q_next);
-      Eigen::Matrix3d ee_rotation, box_front_rotation, box_root_rotation;
-      Eigen::Vector3d ee_translation, box_front_translation, box_root_translation;
+      Eigen::Matrix3d ee_rotation, box_root_rotation;
+      Eigen::Vector3d ee_translation, box_front_translation, box_root_translation,
+                      box_left_translation, box_right_translation;
       ee_rotation = data.oMf[model.getFrameId("ee_link")].rotation();
       ee_translation = data.oMf[model.getFrameId("ee_link")].translation();
-      box_front_rotation = data.oMf[model.getFrameId("obj_front")].rotation();
-      box_front_translation = data.oMf[model.getFrameId("obj_front")].translation();
       box_root_rotation = data.oMf[model.getFrameId("box")].rotation();
       box_root_translation = data.oMf[model.getFrameId("box")].translation();
-      
+      box_front_translation = data.oMf[model.getFrameId("obj_front")].translation();
+      box_left_translation = data.oMf[model.getFrameId("obj_left")].translation();
+      box_right_translation = data.oMf[model.getFrameId("obj_right")].translation();
 
       boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_box_geom (new hpp::fcl::Box (0.1,0.1,0.1));
       boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_ee_geom (new hpp::fcl::Cylinder (0.03, 0.00010));
       boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_box_front_geom (new hpp::fcl::Box (0.00010,0.08,0.08));
+      boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_box_left_geom (new hpp::fcl::Box (0.08,0.00010,0.08));
+      boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_box_right_geom (new hpp::fcl::Box (0.08,0.00010,0.08));
 
       // boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_ee_geom (new hpp::fcl::Sphere (0.005));
       // boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_box_front_geom (new hpp::fcl::Sphere (0.05));
 
       hpp::fcl::CollisionObject fcl_box(fcl_box_geom, box_root_rotation, box_root_translation);
       hpp::fcl::CollisionObject fcl_ee(fcl_ee_geom, ee_rotation, ee_translation);
-      hpp::fcl::CollisionObject fcl_box_front(fcl_box_front_geom, box_front_rotation, box_front_translation);
-      
+      hpp::fcl::CollisionObject fcl_box_front(fcl_box_front_geom, box_root_rotation, box_front_translation);
+      hpp::fcl::CollisionObject fcl_box_left(fcl_box_left_geom, box_root_rotation, box_left_translation);
+      hpp::fcl::CollisionObject fcl_box_right(fcl_box_right_geom, box_root_rotation, box_right_translation);
+
       hpp::fcl::DistanceRequest distReq;
       hpp::fcl::DistanceResult distRes;
 
@@ -371,8 +381,19 @@ public:
       distRes.clear();
       hpp::fcl::distance(&fcl_ee, &fcl_box_front, distReq, distRes);
       double distance_front = distRes.min_distance;
-      Eigen::Vector3d contact_point_ee = distRes.nearest_points[0];
-      Eigen::Vector3d contact_point_front = distRes.nearest_points[1];
+      // distance between EE and left plane, used in force constraints
+      distRes.clear();
+      hpp::fcl::distance(&fcl_ee, &fcl_box_left, distReq, distRes);
+      double distance_left = distRes.min_distance;
+      // distance between EE and right plane, used in force constraints
+      distRes.clear();
+      hpp::fcl::distance(&fcl_ee, &fcl_box_right, distReq, distRes);
+      double distance_right = distRes.min_distance;
+
+      //////////////Variable contact points////////////////////////////////
+      // Eigen::Vector3d contact_point_ee = distRes.nearest_points[0];
+      // Eigen::Vector3d contact_point_front = distRes.nearest_points[1];
+      /////////////////////////////////////////////////////////////////////
 
       // numerical difference to get dDistance_dq
       double alpha = 1e-6;
@@ -389,26 +410,36 @@ public:
         pinocchio::framesForwardKinematics(model, data, q_eps);
         ee_rotation = data.oMf[model.getFrameId("ee_link")].rotation();
         ee_translation = data.oMf[model.getFrameId("ee_link")].translation();
-        box_front_rotation = data.oMf[model.getFrameId("obj_front")].rotation();
-        box_front_translation = data.oMf[model.getFrameId("obj_front")].translation();
         box_root_rotation = data.oMf[model.getFrameId("box")].rotation();
         box_root_translation = data.oMf[model.getFrameId("box")].translation();
+        box_front_translation = data.oMf[model.getFrameId("obj_front")].translation();
+        box_left_translation = data.oMf[model.getFrameId("obj_left")].translation();
+        box_right_translation = data.oMf[model.getFrameId("obj_right")].translation();
         fcl_ee.setTransform(ee_rotation, ee_translation); 
         fcl_box.setTransform(box_root_rotation, box_root_translation);
-        fcl_box_front.setTransform(box_front_rotation, box_front_translation);
+        fcl_box_front.setTransform(box_root_rotation, box_front_translation);
+        fcl_box_left.setTransform(box_root_rotation, box_left_translation);
+        fcl_box_right.setTransform(box_root_rotation, box_right_translation);
         distRes.clear();
         hpp::fcl::distance(&fcl_ee, &fcl_box, distReq, distRes);
         double distance_box_plus = distRes.min_distance;
         distRes.clear();
         hpp::fcl::distance(&fcl_ee, &fcl_box_front, distReq, distRes);
         double distance_front_plus = distRes.min_distance;
+        distRes.clear();
+        hpp::fcl::distance(&fcl_ee, &fcl_box_left, distReq, distRes);
+        double distance_left_plus = distRes.min_distance;
+        distRes.clear();
+        hpp::fcl::distance(&fcl_ee, &fcl_box_right, distReq, distRes);
+        double distance_right_plus = distRes.min_distance;
+        
         dDistance_box_dq(i, k) = (distance_box_plus - distance_box) / alpha;
         dDistance_front_dq(i, k) = (distance_front_plus - distance_front) / alpha;
+        dDistance_left_dq(i, k) = (distance_left_plus - distance_left) / alpha;
+        dDistance_right_dq(i, k) = (distance_right_plus - distance_right) / alpha;
       
         pos_eps[k] -= alpha;
       }
-
-
 
       // Update the contact point frame
       // pinocchio::computeCollisions(model, data_next, geom_model, geom_data,
@@ -432,9 +463,9 @@ public:
       // Eigen::Vector3d robot_r_j2c = joint_frame_placement.inverse().act(contact_point_ee);
       // Eigen::Vector3d object_r_j2c = root_joint_frame_placement.inverse().act(contact_point_front);
       Eigen::Vector3d robot_r_j2c(0.0, 0.092, 0.0);
-      Eigen::Vector3d object_r_j2c(-0.05, 0, 0);
+      Eigen::Vector3d front_r_j2c(-0.05, 0, 0), left_r_j2c(0.0, 0.05, 0.0), right_r_j2c(0.0, -0.05, 0.0);
       model.frames[contactId].placement.translation() = robot_r_j2c;
-      model.frames[object_contactId].placement.translation() = object_r_j2c;
+      model.frames[object_contactId].placement.translation() = front_r_j2c;
       
       pinocchio::Data::Matrix6x w_J_contact(6, model.nv),
                                 w_J_object(6, model.nv);
@@ -471,9 +502,9 @@ public:
       // contact force in [object] frame at [contact] point
       force_ocp = front_normal * exforce(i+1);
       fext_object.col(i).head(3) = force_ocp;
-      fext_object.col(i)(3) = -object_r_j2c(2) * force_ocp(1) + object_r_j2c(1) * force_ocp(2);
-      fext_object.col(i)(4) = object_r_j2c(2) * force_ocp(0) - object_r_j2c(0) * force_ocp(2);
-      fext_object.col(i)(5) = -object_r_j2c(1) * force_ocp(0) + object_r_j2c(0) * force_ocp(1);
+      fext_object.col(i)(3) = -front_r_j2c(2) * force_ocp(1) + front_r_j2c(1) * force_ocp(2);
+      fext_object.col(i)(4) = front_r_j2c(2) * force_ocp(0) - front_r_j2c(0) * force_ocp(2);
+      fext_object.col(i)(5) = -front_r_j2c(1) * force_ocp(0) + front_r_j2c(0) * force_ocp(1);
       // Calculate acceleration using Aba
       Eigen::VectorXd effort_remap(model.nv);
       effort_remap.setZero();

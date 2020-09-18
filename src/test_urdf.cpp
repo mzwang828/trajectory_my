@@ -195,8 +195,8 @@ int main(int argc, char ** argv)
   q << 0,0,0,0,0.1,1.50, 1.0, 0.5, cos(0.0), sin(0.0);
 
   framesForwardKinematics(model, data, q);
-  Eigen::Matrix3d ee_rotation, box_front_rotation, box_root_rotation;
-  Eigen::Vector3d ee_translation, box_front_translation, box_root_translation;
+  Eigen::Matrix3d ee_rotation, box_front_rotation, box_root_rotation, box_left_rotation;
+  Eigen::Vector3d ee_translation, box_front_translation, box_root_translation, box_left_translation;
   ee_rotation = data.oMf[model.getFrameId("ee_link")].rotation();
   ee_translation = data.oMf[model.getFrameId("ee_link")].translation();
   box_front_rotation = data.oMf[model.getFrameId("obj_front")].rotation();
@@ -246,7 +246,7 @@ int main(int argc, char ** argv)
   std::cout << "nearest point: " << distRes.nearest_points[0].transpose() << ", " << distRes.nearest_points[1].transpose() << "\n";
 
   Eigen::VectorXd q_test(model.nq);
-  q_test << 0,0,0,0,0.1,1.5001, 1.0, 0.5, cos(0.0), sin(0.0);
+  q_test << 0,0,0,0,0.1,1.5001, 1.0, 0.5, cos(0.786), sin(0.786);
   pinocchio::framesForwardKinematics(model, data, q_test);
   ee_rotation = data.oMf[model.getFrameId("ee_link")].rotation();
   ee_translation = data.oMf[model.getFrameId("ee_link")].translation();
@@ -254,6 +254,8 @@ int main(int argc, char ** argv)
   box_front_translation = data.oMf[model.getFrameId("obj_front")].translation();
   box_root_rotation = data.oMf[model.getFrameId("box")].rotation();
   box_root_translation = data.oMf[model.getFrameId("box")].translation();
+  box_left_rotation = data.oMf[model.getFrameId("obj_left")].rotation();
+  box_left_translation = data.oMf[model.getFrameId("obj_left")].translation();
 
   hpp::fcl::CollisionObject fcl_box_temp(fcl_box_geom, box_root_rotation, box_root_translation);
   hpp::fcl::CollisionObject fcl_ee_temp(fcl_ee_geom, ee_rotation, ee_translation);
@@ -265,10 +267,17 @@ int main(int argc, char ** argv)
   hpp::fcl::distance(&fcl_ee_temp, &fcl_box_front_temp, distReq, distRes);
   double distance_front_plus = distRes.min_distance;
   std::cout << "---------------\n";
-  std::cout << "ee_rotation: \n" << ee_rotation << "\n";
-  std::cout << "ee_translation: \n" << ee_translation << "\n";
-  std::cout << "distance box: " << distance_box_plus << "\n";
-  std::cout << "distance front: " << distance_front_plus << "\n";
+  std::cout << "front_rotation: \n" << box_front_rotation << "\n";
+  std::cout << "root_rotation: \n" << box_root_rotation << "\n";
+  std::cout << "root_rotation: \n" << box_left_rotation << "\n";
+
+  std::cout << "root_translation: \n" << box_root_translation << "\n";
+  std::cout << "front_translation: \n" << box_front_translation << "\n";
+  std::cout << "left_translation: \n" << box_left_translation << "\n";
+
+
+
+
 
   double alpha = 1e-8;
   Eigen::VectorXd pos_eps(model.nv), dDistance_box_dq(model.nv), dDistance_front_dq((model.nv));
