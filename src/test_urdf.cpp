@@ -192,11 +192,11 @@ int main(int argc, char ** argv)
   GeometryData geom_data(geom_model);
   Eigen::VectorXd q = randomConfiguration(model);
 
-  q << 0,0,0,0,0.1,1.50, 1.0, 0.5, cos(0.0), sin(0.0);
+  q << 0.2,0.5,0.3,0,0.1,1.50, 1.0, 0.5, cos(0.5), sin(0.5);
 
   framesForwardKinematics(model, data, q);
-  Eigen::Matrix3d ee_rotation, box_front_rotation, box_root_rotation, box_left_rotation;
-  Eigen::Vector3d ee_translation, box_front_translation, box_root_translation, box_left_translation;
+  Eigen::Matrix3d ee_rotation, box_front_rotation, box_root_rotation;
+  Eigen::Vector3d ee_translation, box_front_translation, box_root_translation;
   ee_rotation = data.oMf[model.getFrameId("ee_link")].rotation();
   ee_translation = data.oMf[model.getFrameId("ee_link")].translation();
   box_front_rotation = data.oMf[model.getFrameId("obj_front")].rotation();
@@ -246,7 +246,7 @@ int main(int argc, char ** argv)
   std::cout << "nearest point: " << distRes.nearest_points[0].transpose() << ", " << distRes.nearest_points[1].transpose() << "\n";
 
   Eigen::VectorXd q_test(model.nq);
-  q_test << 0,0,0,0,0.1,1.5001, 1.0, 0.5, cos(0.786), sin(0.786);
+  q_test << -0.25,-0.45,0.72,-0.66,0.51,-0.00, 0.63, 0.13, cos(0.0), sin(0.0);
   pinocchio::framesForwardKinematics(model, data, q_test);
   ee_rotation = data.oMf[model.getFrameId("ee_link")].rotation();
   ee_translation = data.oMf[model.getFrameId("ee_link")].translation();
@@ -254,8 +254,6 @@ int main(int argc, char ** argv)
   box_front_translation = data.oMf[model.getFrameId("obj_front")].translation();
   box_root_rotation = data.oMf[model.getFrameId("box")].rotation();
   box_root_translation = data.oMf[model.getFrameId("box")].translation();
-  box_left_rotation = data.oMf[model.getFrameId("obj_left")].rotation();
-  box_left_translation = data.oMf[model.getFrameId("obj_left")].translation();
 
   hpp::fcl::CollisionObject fcl_box_temp(fcl_box_geom, box_root_rotation, box_root_translation);
   hpp::fcl::CollisionObject fcl_ee_temp(fcl_ee_geom, ee_rotation, ee_translation);
@@ -267,17 +265,10 @@ int main(int argc, char ** argv)
   hpp::fcl::distance(&fcl_ee_temp, &fcl_box_front_temp, distReq, distRes);
   double distance_front_plus = distRes.min_distance;
   std::cout << "---------------\n";
-  std::cout << "front_rotation: \n" << box_front_rotation << "\n";
-  std::cout << "root_rotation: \n" << box_root_rotation << "\n";
-  std::cout << "root_rotation: \n" << box_left_rotation << "\n";
-
-  std::cout << "root_translation: \n" << box_root_translation << "\n";
-  std::cout << "front_translation: \n" << box_front_translation << "\n";
-  std::cout << "left_translation: \n" << box_left_translation << "\n";
-
-
-
-
+  std::cout << "ee_rotation: \n" << ee_rotation << "\n";
+  std::cout << "ee_translation: \n" << ee_translation << "\n";
+  std::cout << "distance box: " << distance_box_plus << "\n";
+  std::cout << "distance front: " << distance_front_plus << "\n";
 
   double alpha = 1e-8;
   Eigen::VectorXd pos_eps(model.nv), dDistance_box_dq(model.nv), dDistance_front_dq((model.nv));
@@ -314,5 +305,24 @@ int main(int argc, char ** argv)
 
   std::cout<< "dDistance_box_dq: " << dDistance_box_dq.transpose() << "\n";
   std::cout<< "dDistance_front_dq: " << dDistance_front_dq.transpose() << "\n";
+
+  pinocchio::computeJointJacobians(model, data, q_test);
+  pinocchio::framesForwardKinematics(model, data, q_test);
+
+  Eigen::Vector3d robot_r_j2c(0.0, 0.092, 0.0);
+  model.frames[contactId].placement.translation() = robot_r_j2c;
+
+  pinocchio::Data::Matrix6x w_J_contact(6, model.nv), w_J_contact_refer(6, model.nv), w_J_contact_refer_2(6, model.nv);
+  w_J_contact.setZero(); w_J_contact_refer.setZero(); w_J_contact_refer_2.setZero();
+
+  getFrameJacobian(model, data, contactId, LOCAL, w_J_contact);
+
+  robot_r_j2c << 0.0, 0.092, 0.05;
+  model.frames[contactId].placement.translation() = robot_r_j2c;
+  computeFrameJacobian(model, data, q_test, contactId, LOCAL, w_J_contact_refer);
+
+  std::cout << "one: \n" << w_J_contact << "\n";
+  std::cout << "two: \n" << w_J_contact_refer << "\n";
+
 
 }
