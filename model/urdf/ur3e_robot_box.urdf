@@ -28,6 +28,15 @@
   Author: Felix Messmer
 -->
   <!-- measured from model -->
+
+  <material name="blue">
+    <color rgba="0 0 0.8 1"/>
+  </material>
+  <material name="white">
+    <color rgba="1 1 1 1"/>
+  </material>
+
+
   <link name="base_link">
     <visual>
       <geometry>
@@ -230,9 +239,11 @@
     </collision>
     <visual>
       <geometry>
-        <cylinder length="0.010" radius="0.03"/>
+        <!-- <cylinder length="0.010" radius="0.03"/> -->
+        <sphere radius = "0.005"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 -0.005"/>
+      <material name="blue"/>
     </visual>
   </link>
   <transmission name="shoulder_pan_trans">
@@ -402,6 +413,51 @@
     <origin xyz="0 0 0.05"/>
     <axis xyz="0 0 1"/>
     <limit effort="1000.0" lower="-6.28318530718" upper="6.28318530718" velocity="1.0"/>
+  </joint>
+
+   <link name="obj_front">
+    <visual>
+      <geometry>
+        <box size="0.0001 0.08 0.08" />
+      </geometry>
+    <material name="blue"/>
+    </visual>
+  </link>
+
+  <link name="obj_left">
+    <visual>
+      <geometry>
+        <box size="0.08 0.0001 0.08" />
+      </geometry>
+    <material name="blue"/>
+    </visual>
+  </link>
+
+  <link name="obj_right">
+    <visual>
+      <geometry>
+        <box size="0.08 0.0001 0.08" />
+      </geometry>
+    <material name="blue"/>
+    </visual>
+  </link>
+
+  <joint name="obj_front_link" type="fixed">
+    <parent link="box"/>
+    <child link="obj_front"/>
+    <origin xyz="-0.05 0 0"/>
+  </joint>
+
+  <joint name="obj_left_link" type="fixed">
+    <parent link="box"/>
+    <child link="obj_left"/>
+    <origin xyz="0 0.05 0"/>
+  </joint>
+
+  <joint name="obj_right_link" type="fixed">
+    <parent link="box"/>
+    <child link="obj_right"/>
+    <origin xyz="0 -0.05 0"/>
   </joint>
 
 </robot>

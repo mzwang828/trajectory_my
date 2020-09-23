@@ -191,40 +191,33 @@ int main(int argc, char ** argv)
   Data data(model);
   GeometryData geom_data(geom_model);
   Eigen::VectorXd q = randomConfiguration(model);
-
-  q << 0.2,0.5,0.3,0,0.1,1.50, 1.0, 0.5, cos(0.5), sin(0.5);
-
-  framesForwardKinematics(model, data, q);
-  Eigen::Matrix3d ee_rotation, box_front_rotation, box_root_rotation;
-  Eigen::Vector3d ee_translation, box_front_translation, box_root_translation;
+  
+  Eigen::VectorXd q_test(model.nq);
+  q_test << -0.05,-0.80,1.55,-0.96,1.57,-0.00, 0.50, 0.13, cos(0.0), sin(0.0);
+  pinocchio::framesForwardKinematics(model, data, q_test);
+  Eigen::Matrix3d ee_rotation, box_root_rotation;
+  Eigen::Vector3d ee_translation, box_front_translation, box_root_translation,
+                  box_left_translation, box_right_translation;
   ee_rotation = data.oMf[model.getFrameId("ee_link")].rotation();
   ee_translation = data.oMf[model.getFrameId("ee_link")].translation();
-  box_front_rotation = data.oMf[model.getFrameId("obj_front")].rotation();
-  box_front_translation = data.oMf[model.getFrameId("obj_front")].translation();
   box_root_rotation = data.oMf[model.getFrameId("box")].rotation();
   box_root_translation = data.oMf[model.getFrameId("box")].translation();
-
-  std::cout << "ee:\n" << data.oMf[model.getFrameId("ee_link")] << "\n";
-
-
-  // q << 0,0,0,0,0,0.1, 1.0, 0.5, cos(0.0), sin(0.0);
-
-  // framesForwardKinematics(model, data, q);
-
-  // std::cout << "ee:\n" << data.oMf[model.getFrameId("ee_link")] << "\n";
-  
+  box_front_translation = data.oMf[model.getFrameId("obj_front")].translation();
+  box_left_translation = data.oMf[model.getFrameId("obj_left")].translation();
+  box_right_translation = data.oMf[model.getFrameId("obj_right")].translation();
 
   boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_box_geom (new hpp::fcl::Box (0.1,0.1,0.1));
   boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_ee_geom (new hpp::fcl::Cylinder (0.03, 0.00010));
   boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_box_front_geom (new hpp::fcl::Box (0.00010,0.08,0.08));
-
-  // boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_ee_geom (new hpp::fcl::Sphere (0.005));
-  // boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_box_front_geom (new hpp::fcl::Sphere (0.05));
+  boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_box_left_geom (new hpp::fcl::Box (0.08,0.00010,0.08));
+  boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_box_right_geom (new hpp::fcl::Box (0.08,0.00010,0.08));
 
   hpp::fcl::CollisionObject fcl_box(fcl_box_geom, box_root_rotation, box_root_translation);
   hpp::fcl::CollisionObject fcl_ee(fcl_ee_geom, ee_rotation, ee_translation);
-  hpp::fcl::CollisionObject fcl_box_front(fcl_box_front_geom, box_front_rotation, box_front_translation);
-  
+  hpp::fcl::CollisionObject fcl_box_front(fcl_box_front_geom, box_root_rotation, box_front_translation);
+  hpp::fcl::CollisionObject fcl_box_left(fcl_box_left_geom, box_root_rotation, box_left_translation);
+  hpp::fcl::CollisionObject fcl_box_right(fcl_box_right_geom, box_root_rotation, box_right_translation);
+
   hpp::fcl::DistanceRequest distReq;
   hpp::fcl::DistanceResult distRes;
 
@@ -234,95 +227,22 @@ int main(int argc, char ** argv)
   distRes.clear();
   hpp::fcl::distance(&fcl_ee, &fcl_box, distReq, distRes);
   double distance_box = distRes.min_distance;
-  std::cout << "box nearest point: " << distRes.nearest_points[0].transpose() << ", " << distRes.nearest_points[1].transpose() << "\n";
-
   // distance between EE and front plane, used in force constraints
   distRes.clear();
   hpp::fcl::distance(&fcl_ee, &fcl_box_front, distReq, distRes);
   double distance_front = distRes.min_distance;
+  // distance between EE and left plane, used in force constraints
+  distRes.clear();
+  hpp::fcl::distance(&fcl_ee, &fcl_box_left, distReq, distRes);
+  double distance_left = distRes.min_distance;
+  // distance between EE and right plane, used in force constraints
+  distRes.clear();
+  hpp::fcl::distance(&fcl_ee, &fcl_box_right, distReq, distRes);
+  double distance_right = distRes.min_distance;
 
+  std::cout << "---------------\n";
   std::cout << "distance box: " << distance_box << "\n";
   std::cout << "distance front: " << distance_front << "\n";
-  std::cout << "nearest point: " << distRes.nearest_points[0].transpose() << ", " << distRes.nearest_points[1].transpose() << "\n";
-
-  Eigen::VectorXd q_test(model.nq);
-  q_test << -0.25,-0.45,0.72,-0.66,0.51,-0.00, 0.63, 0.13, cos(0.0), sin(0.0);
-  pinocchio::framesForwardKinematics(model, data, q_test);
-  ee_rotation = data.oMf[model.getFrameId("ee_link")].rotation();
-  ee_translation = data.oMf[model.getFrameId("ee_link")].translation();
-  box_front_rotation = data.oMf[model.getFrameId("obj_front")].rotation();
-  box_front_translation = data.oMf[model.getFrameId("obj_front")].translation();
-  box_root_rotation = data.oMf[model.getFrameId("box")].rotation();
-  box_root_translation = data.oMf[model.getFrameId("box")].translation();
-
-  hpp::fcl::CollisionObject fcl_box_temp(fcl_box_geom, box_root_rotation, box_root_translation);
-  hpp::fcl::CollisionObject fcl_ee_temp(fcl_ee_geom, ee_rotation, ee_translation);
-  hpp::fcl::CollisionObject fcl_box_front_temp(fcl_box_front_geom, box_front_rotation, box_front_translation);
-  distRes.clear();
-  hpp::fcl::distance(&fcl_ee_temp, &fcl_box_temp, distReq, distRes);
-  double distance_box_plus = distRes.min_distance;
-  distRes.clear();
-  hpp::fcl::distance(&fcl_ee_temp, &fcl_box_front_temp, distReq, distRes);
-  double distance_front_plus = distRes.min_distance;
-  std::cout << "---------------\n";
-  std::cout << "ee_rotation: \n" << ee_rotation << "\n";
-  std::cout << "ee_translation: \n" << ee_translation << "\n";
-  std::cout << "distance box: " << distance_box_plus << "\n";
-  std::cout << "distance front: " << distance_front_plus << "\n";
-
-  double alpha = 1e-8;
-  Eigen::VectorXd pos_eps(model.nv), dDistance_box_dq(model.nv), dDistance_front_dq((model.nv));
-  pos_eps.head(8) = q.head(8);
-  pos_eps[8] = 0.0;
-  for(int k = 0; k < model.nv; ++k)
-  {
-    pos_eps[k] += alpha;
-    Eigen::VectorXd q_eps(model.nq);
-    q_eps.segment(0, 9-1) = pos_eps.segment(0, 9 - 1);
-    q_eps(model.nq - 2) = cos(pos_eps(9 - 1));
-    q_eps(model.nq - 1) = sin(pos_eps(9 - 1));
-    pinocchio::framesForwardKinematics(model, data, q_eps);
-    ee_rotation = data.oMf[model.getFrameId("ee_link")].rotation();
-    ee_translation = data.oMf[model.getFrameId("ee_link")].translation();
-    box_front_rotation = data.oMf[model.getFrameId("obj_front")].rotation();
-    box_front_translation = data.oMf[model.getFrameId("obj_front")].translation();
-    box_root_rotation = data.oMf[model.getFrameId("box")].rotation();
-    box_root_translation = data.oMf[model.getFrameId("box")].translation();
-    fcl_ee.setTransform(ee_rotation, ee_translation); 
-    fcl_box.setTransform(box_root_rotation, box_root_translation);
-    fcl_box_front.setTransform(box_front_rotation, box_front_translation);
-    distRes.clear();
-    hpp::fcl::distance(&fcl_ee, &fcl_box, distReq, distRes);
-    double distance_box_plus = distRes.min_distance;
-    distRes.clear();
-    hpp::fcl::distance(&fcl_ee, &fcl_box_front, distReq, distRes);
-    double distance_front_plus = distRes.min_distance;
-    dDistance_box_dq(k) = (distance_box_plus - distance_box) / alpha;
-    dDistance_front_dq(k) = (distance_front_plus - distance_front) / alpha;
-  
-    pos_eps[k] -= alpha;
-  }
-
-  std::cout<< "dDistance_box_dq: " << dDistance_box_dq.transpose() << "\n";
-  std::cout<< "dDistance_front_dq: " << dDistance_front_dq.transpose() << "\n";
-
-  pinocchio::computeJointJacobians(model, data, q_test);
-  pinocchio::framesForwardKinematics(model, data, q_test);
-
-  Eigen::Vector3d robot_r_j2c(0.0, 0.092, 0.0);
-  model.frames[contactId].placement.translation() = robot_r_j2c;
-
-  pinocchio::Data::Matrix6x w_J_contact(6, model.nv), w_J_contact_refer(6, model.nv), w_J_contact_refer_2(6, model.nv);
-  w_J_contact.setZero(); w_J_contact_refer.setZero(); w_J_contact_refer_2.setZero();
-
-  getFrameJacobian(model, data, contactId, LOCAL, w_J_contact);
-
-  robot_r_j2c << 0.0, 0.092, 0.05;
-  model.frames[contactId].placement.translation() = robot_r_j2c;
-  computeFrameJacobian(model, data, q_test, contactId, LOCAL, w_J_contact_refer);
-
-  std::cout << "one: \n" << w_J_contact << "\n";
-  std::cout << "two: \n" << w_J_contact_refer << "\n";
-
-
+  std::cout << "distance left: " << distance_left << "\n";
+  std::cout << "distance right: " << distance_right << "\n";
 }

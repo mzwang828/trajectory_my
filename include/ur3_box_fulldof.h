@@ -54,7 +54,7 @@ public:
     n_exforce = params["n_exforce"].as<int>();
     n_step = params["n_step"].as<int>();
     t_step = params["t_step"].as<double>();
-    goal_x = params["box_goal_x"].as<double>();
+    goal = params["box_goal"].as<std::vector<double>>();
     
     xvar = Eigen::VectorXd::Zero(n);
     // the initial values where the NLP starts iterating from
@@ -108,7 +108,7 @@ public:
     n_exforce = params["n_exforce"].as<int>();
     n_step = params["n_step"].as<int>();
     t_step = params["t_step"].as<double>();
-    goal_x = params["box_goal_x"].as<double>();
+    goal = params["box_goal"].as<std::vector<double>>();
 
     xvar = Eigen::VectorXd::Zero(n);
     // the initial values where the NLP starts iterating from
@@ -143,8 +143,8 @@ public:
       bounds.at(7) = Bounds(0.131073, 0.131073);
       bounds.at(8) = Bounds(0, 0);
 
-      bounds.at(GetRows() - 3) = Bounds(goal_x, goal_x);
-      // bounds.at(GetRows() - 2) = Bounds(0.3, 0.3);
+      bounds.at(GetRows() - 3) = Bounds(goal[0], goal[0]);
+      bounds.at(GetRows() - 2) = Bounds(goal[1], goal[1]);
     } else if (GetName() == "velocity") {
       for (int i = 0; i < GetRows(); i++)
         bounds.at(i) = Bounds(-velocity_lim, velocity_lim);
@@ -184,7 +184,7 @@ private:
   double velocity_lim = 5;
   double effort_lim = 200;
   double force_lim = 100;
-  double goal_x;
+  std::vector<double> goal;
 };
 
 // system dynamics constraints
@@ -201,11 +201,10 @@ public:
   pinocchio::FrameIndex contactId, object_frontId, object_leftId, object_rightId;
   Eigen::Vector3d front_normal, left_normal, right_normal; // normal vector point to the front plane
   Eigen::Vector3d robot_contact_normal;
-  mutable Eigen::VectorXd distance_cache; 
   mutable Eigen::MatrixXd J_front_remapped,
                           J_left_remapped,
                           J_right_remapped; // used to save calculated Jacobians for exforce
-  mutable Eigen::MatrixXd fext_robot, fext_object; // used to save fext values for each joint
+  mutable Eigen::MatrixXd fext_robot, fext_box; // used to save fext values for each joint
   mutable Eigen::MatrixXd dDistance_box_dq, dDistance_front_dq,
                           dDistance_left_dq, dDistance_right_dq; // numerical gradients for distance
   // Input Mapping & Friction
@@ -215,6 +214,7 @@ public:
   int n_exforce;                // number of external force
   int n_step;                   // number of steps or (knot points - 1)
   double t_step;                // length of each step
+  int constraint_type;          // constraint type
 
   ExConstraint(int n) : ExConstraint(n, "constraint1") {}
   ExConstraint(int n, const std::string &name) : ConstraintSet(n, name) {
@@ -270,6 +270,7 @@ public:
     n_exforce = params["n_exforce"].as<int>();
     n_step = params["n_step"].as<int>();
     t_step = params["t_step"].as<double>();
+    constraint_type = params["constraint_type"].as<int>();
     
     J_front_remapped.resize(n_dof, n_step - 1);
     J_front_remapped.setZero();
@@ -280,8 +281,8 @@ public:
     
     fext_robot.resize(6, n_step - 1); // fext for robot
     fext_robot.setZero();
-    fext_object.resize(6, n_step - 1); // fext for box
-    fext_object.setZero();
+    fext_box.resize(6, n_step - 1); // fext for box
+    fext_box.setZero();
 
     B.resize(n_dof, n_control);
     B.setZero();
@@ -291,10 +292,7 @@ public:
     f.setZero();
     f(6, 0) = 1.0;
     f(7, 1) = 1.0;
-    f(8, 2) = 0.08;
-
-    distance_cache.resize(n_step);
-    distance_cache.setZero();
+    f(8, 2) = 0.01;
 
     dDistance_box_dq.resize(n_step, n_dof);
     dDistance_box_dq.setZero();
@@ -370,12 +368,12 @@ public:
       box_right_translation = data.oMf[model.getFrameId("obj_right")].translation();
 
       boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_box_geom (new hpp::fcl::Box (0.1,0.1,0.1));
-      boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_ee_geom (new hpp::fcl::Cylinder (0.03, 0.00010));
+      // boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_ee_geom (new hpp::fcl::Cylinder (0.03, 0.00010));
       boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_box_front_geom (new hpp::fcl::Box (0.00010,0.08,0.08));
       boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_box_left_geom (new hpp::fcl::Box (0.08,0.00010,0.08));
       boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_box_right_geom (new hpp::fcl::Box (0.08,0.00010,0.08));
 
-      // boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_ee_geom (new hpp::fcl::Sphere (0.005));
+      boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_ee_geom (new hpp::fcl::Sphere (0.005));
       // boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_box_front_geom (new hpp::fcl::Sphere (0.05));
 
       hpp::fcl::CollisionObject fcl_box(fcl_box_geom, box_root_rotation, box_root_translation);
@@ -522,26 +520,38 @@ public:
           Minv.transpose().triangularView<Eigen::StrictlyLower>();
 
       // Get external force in local joint frame
-      Eigen::VectorXd force_robot(3), force_front(3);
+      Eigen::VectorXd force_robot(3), force_front(3), force_left(3), force_right(3);
       // contact force in [wrist_3_joint] frame at [contact] point
-      force_robot = robot_contact_normal * exforce(i+1);
+      force_robot = robot_contact_normal * (exforce(i+1) + exforce(n_step + i+1) + exforce(2*n_step + i+1));
       // Get force and moment at [joint_origin] point
       fext_robot.col(i).head(3) = force_robot;
       fext_robot.col(i)(3) = -robot_r_j2c(2) * force_robot(1) + robot_r_j2c(1) * force_robot(2);
       fext_robot.col(i)(4) = robot_r_j2c(2) * force_robot(0) - robot_r_j2c(0) * force_robot(2);
       fext_robot.col(i)(5) = -robot_r_j2c(1) * force_robot(0) + robot_r_j2c(0) * force_robot(1);
-      // contact force in [object] frame at [contact] point
+      // contact force in [object] frame at [contact] point of front surface
       force_front = front_normal * exforce(i+1);
-      fext_object.col(i).head(3) = force_front;
-      fext_object.col(i)(3) = -front_r_j2c(2) * force_front(1) + front_r_j2c(1) * force_front(2);
-      fext_object.col(i)(4) = front_r_j2c(2) * force_front(0) - front_r_j2c(0) * force_front(2);
-      fext_object.col(i)(5) = -front_r_j2c(1) * force_front(0) + front_r_j2c(0) * force_front(1);
+      fext_box.col(i).head(3) = force_front;
+      fext_box.col(i)(3) = -front_r_j2c(2) * force_front(1) + front_r_j2c(1) * force_front(2);
+      fext_box.col(i)(4) = front_r_j2c(2) * force_front(0) - front_r_j2c(0) * force_front(2);
+      fext_box.col(i)(5) = -front_r_j2c(1) * force_front(0) + front_r_j2c(0) * force_front(1);
+      // contact force in [object] frame at [contact] point of left surface
+      force_left = left_normal * exforce(n_step + i+1);
+      fext_box.col(i).head(3) += force_left;
+      fext_box.col(i)(3) += -left_r_j2c(2) * force_left(1) + left_r_j2c(1) * force_left(2);
+      fext_box.col(i)(4) += left_r_j2c(2) * force_left(0) - left_r_j2c(0) * force_left(2);
+      fext_box.col(i)(5) += -left_r_j2c(1) * force_left(0) + left_r_j2c(0) * force_left(1);
+      // contact force in [object] frame at [contact] point of right surface
+      force_right = right_normal * exforce(2 * n_step + i+1);
+      fext_box.col(i).head(3) += force_right;
+      fext_box.col(i)(3) += -right_r_j2c(2) * force_right(1) + right_r_j2c(1) * force_right(2);
+      fext_box.col(i)(4) += right_r_j2c(2) * force_right(0) - right_r_j2c(0) * force_right(2);
+      fext_box.col(i)(5) += -right_r_j2c(1) * force_right(0) + right_r_j2c(0) * force_right(1);
       // Calculate acceleration using Aba
       Eigen::VectorXd effort_remap(model.nv);
       effort_remap.setZero();
       effort_remap = B * effort.segment(n_control * (i + 1), n_control);
       pinocchio::Force::Vector6 fext_robot_ref = fext_robot.col(i);
-      pinocchio::Force::Vector6 fext_object_ref = fext_object.col(i);
+      pinocchio::Force::Vector6 fext_object_ref = fext_box.col(i);
       PINOCCHIO_ALIGNED_STD_VECTOR(pinocchio::Force) fext((size_t)model.njoints, pinocchio::Force::Zero());
       fext[6] = pinocchio::ForceRef<pinocchio::Force::Vector6>(fext_robot_ref);
       fext[7] = pinocchio::ForceRef<pinocchio::Force::Vector6>(fext_object_ref);
@@ -593,21 +603,46 @@ public:
       //     Minv * (data_next.nle - effort_remap -
       //     J_remapped.col(i) * exforce(i + 1) + f * tanh(20 * vel(n_dof * (i) + 3)));
 
-      // Contact constraints, 3 constraints for each step
+      // Contact constraints
+      // front
       g(n_dof * 2 * (n_step - 1) + i) = distance_front - slack(i);
-      g(n_dof * 2 * (n_step - 1) + n_step - 1 + i) =
-          exforce(i + 1) * slack(i) - slack(n_step - 1 + i);
+      // left
+      g(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i) = 
+          distance_left - slack(n_step - 1 + i);
+      // right
+      g(n_dof * 2 * (n_step - 1) + 4 * (n_step - 1) + i) = 
+          distance_right - slack(2 * (n_step - 1) + i);
+
+      // Complementary
+      if (constraint_type == 0){
+        // front
+        g(n_dof * 2 * (n_step - 1) + n_step - 1 + i) =
+            exforce(i + 1) * slack(i) - slack(3*(n_step - 1) + i);
+        // left
+        g(n_dof * 2 * (n_step - 1) + 3 * (n_step - 1) + i) = 
+            exforce(n_step + i + 1) * slack(n_step - 1 + i)
+            - slack(4 * (n_step - 1) + i);
+        // right
+        g(n_dof * 2 * (n_step - 1) + 5 * (n_step - 1) + i) = 
+            exforce(2 * n_step + i + 1) * slack(2 * (n_step - 1) + i)
+            - slack(5 * (n_step - 1) + i);
+      }
       // state-trigger
-      // g(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i) =
-      //    -std::min(-slack(i), 0.0) * slack(n_step - 1 + i);
-      // complimentray
-      // g(n_dof * 2 * (n_step - 1) + 1 * (n_step - 1) + i) =
-      //     slack(i) * exforce(i + 1) - slack(n_step - 1 + i);
+      else if (constraint_type == 1){
+        // front
+        g(n_dof * 2 * (n_step - 1) + n_step - 1 + i) =
+            -std::min(-exforce(i + 1), 0.0) * slack(i);
+        // left
+        g(n_dof * 2 * (n_step - 1) + 3 * (n_step - 1) + i) = 
+            -std::min(-exforce(n_step + i + 1), 0.0) * slack(n_step - 1 + i);
+        // right
+        g(n_dof * 2 * (n_step - 1) + 5 * (n_step - 1) + i) = 
+            -std::min(-exforce(2 * n_step + i + 1), 0.0) * 
+            slack(2 * (n_step - 1) + i);
+      }
 
-      g(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i) =
+      g(n_dof * 2 * (n_step - 1) + 6 * (n_step - 1) + i) =
           distance_box;
-
-      distance_cache(i) = distance_front;
     }
     return g;
   };
@@ -618,12 +653,39 @@ public:
     VecBound bounds(GetRows());
     for (int i = 0; i < n_dof * 2 * (n_step - 1); i++)
       bounds.at(i) = Bounds(0.0, 0.0);
-    for (int i = 0; i < n_step - 1; i++) {
-      bounds.at(n_dof * 2 * (n_step - 1) + i) = Bounds(0.0, 0.0);
-      bounds.at(n_dof * 2 * (n_step - 1) + n_step - 1 + i) = Bounds(-inf, 0);
-      bounds.at(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i) =
-          Bounds(0, inf);
+    if (constraint_type == 0){
+      for (int i = 0; i < n_step - 1; i++) {
+        bounds.at(n_dof * 2 * (n_step - 1) + i) = Bounds(0.0, 0.0);
+        bounds.at(n_dof * 2 * (n_step - 1) + n_step - 1 + i) = Bounds(-inf, 0.0);
+        bounds.at(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i) = 
+            Bounds(0.0, 0.0);
+        bounds.at(n_dof * 2 * (n_step - 1) + 3 * (n_step - 1) + i) = 
+            Bounds(-inf, 0.0);
+        bounds.at(n_dof * 2 * (n_step - 1) + 4 * (n_step - 1) + i) = 
+            Bounds(0.0, 0.0);
+        bounds.at(n_dof * 2 * (n_step - 1) + 5 * (n_step - 1) + i) = 
+            Bounds(-inf, 0.0);
+        bounds.at(n_dof * 2 * (n_step - 1) + 6 * (n_step - 1) + i) =
+            Bounds(0.0, inf);
+      }
     }
+    else if (constraint_type == 1){
+      for (int i = 0; i < n_step - 1; i++) {
+        bounds.at(n_dof * 2 * (n_step - 1) + i) = Bounds(0.0, 0.0);
+        bounds.at(n_dof * 2 * (n_step - 1) + n_step - 1 + i) = Bounds(0.0, 0.0);
+        bounds.at(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i) = 
+            Bounds(0.0, 0.0);
+        bounds.at(n_dof * 2 * (n_step - 1) + 3 * (n_step - 1) + i) = 
+            Bounds(0.0,0.0);
+        bounds.at(n_dof * 2 * (n_step - 1) + 4 * (n_step - 1) + i) = 
+            Bounds(0.0, 0.0);
+        bounds.at(n_dof * 2 * (n_step - 1) + 5 * (n_step - 1) + i) = 
+            Bounds(0.0, 0.0);
+        bounds.at(n_dof * 2 * (n_step - 1) + 6 * (n_step - 1) + i) =
+            Bounds(0.0, inf);
+      }
+    }
+
     return bounds;
   }
 
@@ -650,7 +712,7 @@ public:
       effort_remap.setZero();
       effort_remap = B * effort.segment(n_control * (i + 1), n_control);
       pinocchio::Force::Vector6 fext_robot_ref = fext_robot.col(i);
-      pinocchio::Force::Vector6 fext_object_ref = fext_object.col(i);
+      pinocchio::Force::Vector6 fext_object_ref = fext_box.col(i);
       PINOCCHIO_ALIGNED_STD_VECTOR(pinocchio::Force) fext((size_t)model.njoints, pinocchio::Force::Zero());
       fext[6] = pinocchio::ForceRef<pinocchio::Force::Vector6>(fext_robot_ref);
       fext[7] = pinocchio::ForceRef<pinocchio::Force::Vector6>(fext_object_ref);
@@ -696,6 +758,12 @@ public:
                                   dDistance_front_dq(i, j))); //dDistance_front_k+1_dq_k+1
           triplet_pos.push_back(T(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i, 
                                   n_dof * (i+1) + j, 
+                                  dDistance_left_dq(i, j))); //dDistance_left_k+1_dq_k+1
+          triplet_pos.push_back(T(n_dof * 2 * (n_step - 1) + 4 * (n_step - 1) + i, 
+                                  n_dof * (i+1) + j, 
+                                  dDistance_right_dq(i, j))); //dDistance_right_k+1_dq_k+1
+          triplet_pos.push_back(T(n_dof * 2 * (n_step - 1) + 6 * (n_step - 1) + i, 
+                                  n_dof * (i+1) + j, 
                                   dDistance_box_dq(i, j))); //dDistance_box_k+1_dq_k+1
         }
         if (var_set == "velocity") {
@@ -740,23 +808,63 @@ public:
           }
         }
         if (var_set == "exforce") {
-          for (int k = 0; k < n_exforce; k++) {
-            triplet_exforce.push_back(T(n_dof * (n_step - 1 + i) + j,
-                                        n_exforce * i + n_exforce + k,
-                                        (-Minv * J_front_remapped.col(i))(j)));
-          }
+          // front
+          triplet_exforce.push_back(T(n_dof * (n_step - 1 + i) + j, i+1,
+                                    (-Minv * J_front_remapped.col(i))(j)));
+          // left
+          triplet_exforce.push_back(T(n_dof * (n_step - 1 + i) + j, 
+                                    n_step + i + 1,
+                                    (-Minv * J_left_remapped.col(i))(j)));
+          // right
+          triplet_exforce.push_back(T(n_dof * (n_step - 1 + i) + j, 
+                                    2 * n_step + i + 1,
+                                    (-Minv * J_right_remapped.col(i))(j)));
         }
       }
       if (var_set == "exforce") {
-        triplet_exforce.push_back(T(n_dof * 2 * (n_step - 1) + n_step - 1 + i, i + 1, slack(i)));
+        triplet_exforce.push_back(T(n_dof * 2 * (n_step - 1) + n_step - 1 + i, 
+                                  i + 1, slack(i)));
+        triplet_exforce.push_back(T(n_dof * 2 * (n_step - 1) + 3 * (n_step - 1) + i, 
+                                  n_step + i + 1, slack(n_step - 1 + i)));
+        triplet_exforce.push_back(T(n_dof * 2 * (n_step - 1) + 5 * (n_step - 1) + i, 
+                                  2 * n_step + i + 1, slack(2 * (n_step - 1) + i)));
       }
       if (var_set == "slack") {
-        triplet_slack.push_back(T(n_dof * 2 * (n_step - 1) + i, i, -1));
-        triplet_slack.push_back(T(n_dof * 2 * (n_step - 1) + n_step - 1 + i, i, exforce(i + 1)));
-        triplet_slack.push_back(T(n_dof * 2 * (n_step - 1) + n_step - 1 + i, n_step - 1 + i, -1));
-        // triplet_slack.push_back(T(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i, i, slack(n_step - 1 + i)));
-        // triplet_slack.push_back(T(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i, n_step - 1 + i, slack(i)));
-        // triplet_slack.push_back(T(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i, 2 * (n_step - 1) + i, -1));
+        if (constraint_type == 0){
+          triplet_slack.push_back(T(n_dof * 2 * (n_step - 1) + i, i, -1));
+          triplet_slack.push_back(T(n_dof * 2 * (n_step - 1) + n_step - 1 + i, 
+                                  i, exforce(i + 1)));
+          triplet_slack.push_back(T(n_dof * 2 * (n_step - 1) + n_step - 1 + i, 
+                                  3 * (n_step - 1) + i, -1));
+          triplet_slack.push_back(T(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i, 
+                                  n_step - 1 + i, -1));
+          triplet_slack.push_back(T(n_dof * 2 * (n_step - 1) + 3 * (n_step - 1) + i, 
+                                  n_step - 1 + i, exforce(n_step + i + 1)));
+          triplet_slack.push_back(T(n_dof * 2 * (n_step - 1) + 3 * (n_step - 1) + i, 
+                                  4 * (n_step - 1) + i, -1));
+          triplet_slack.push_back(T(n_dof * 2 * (n_step - 1) + 4 * (n_step - 1) + i, 
+                                  2 * (n_step - 1) + i, -1));
+          triplet_slack.push_back(T(n_dof * 2 * (n_step - 1) + 5 * (n_step - 1) + i, 
+                                  2 * (n_step - 1) + i, 
+                                  exforce(2 * n_step + 1 + 1)));
+          triplet_slack.push_back(T(n_dof * 2 * (n_step - 1) + 5 * (n_step - 1) + i, 
+                                  5 * (n_step - 1) + i, -1));
+        }
+        else if (constraint_type == 1){
+          triplet_slack.push_back(T(n_dof * 2 * (n_step - 1) + i, i, -1));
+          triplet_slack.push_back(T(n_dof * 2 * (n_step - 1) + n_step - 1 + i,
+                                  i, -std::min(-exforce(i + 1), 0.0)));
+          triplet_slack.push_back(T(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i, 
+                                  n_step - 1 + i, -1));
+          triplet_slack.push_back(T(n_dof * 2 * (n_step - 1) + 3 * (n_step - 1) + i, 
+                                  n_step - 1 + i, 
+                                  -std::min(-exforce(n_step + i + 1), 0.0)));
+          triplet_slack.push_back(T(n_dof * 2 * (n_step - 1) + 4 * (n_step - 1) + i, 
+                                  2 * (n_step - 1) + i, -1));
+          triplet_slack.push_back(T(n_dof * 2 * (n_step - 1) + 5 * (n_step - 1) + i, 
+                                  2 * (n_step - 1) + i, 
+                                  -std::min(-exforce(2 * n_step + i + 1), 0.0)));
+        }
       }
     } 
     if (var_set == "position") {
@@ -785,6 +893,7 @@ public:
         "/home/mzwang/catkin_ws/src/trajectory_my/Config/params.yaml");
     cost_func_type = params["cost_func_type"].as<int>();
     n_step = params["n_step"].as<int>();
+    constraint_type = params["constraint_type"].as<int>();
     }
 
   double GetCost() const override {
@@ -794,19 +903,21 @@ public:
 
     double cost = vel.squaredNorm();
     
-    // penalty on slack
-    float slack_weight = 1e4;
-    switch (cost_func_type)
-    {
-    case 0:
-      cost = cost + slack_weight * slack.tail(n_step-1).squaredNorm();
-      break;
-    case 1:
-      cost = cost + slack_weight * slack.tail(n_step-1).lpNorm<1>();
-      break;
-    case 2:
-      cost = cost + slack_weight * slack.tail(n_step-1).norm();
-      break;
+    if (constraint_type == 0){
+      // penalty on slack
+      float slack_weight = 1e4;
+      switch (cost_func_type)
+      {
+      case 0:
+        cost = cost + slack_weight * slack.tail(3*(n_step-1)).squaredNorm();
+        break;
+      case 1:
+        cost = cost + slack_weight * slack.tail(3*(n_step-1)).lpNorm<1>();
+        break;
+      case 2:
+        cost = cost + slack_weight * slack.tail(3*(n_step-1)).norm();
+        break;
+      }
     }
 
     return cost;
@@ -825,28 +936,30 @@ public:
     if (var_set == "slack"){
       VectorXd slack = GetVariables()->GetComponent("slack")->GetValues();
       std::vector<T> triplet_slack;
-      switch (cost_func_type)
-      {
-      case 0:
-        for (int i = 0; i < n_step - 1; i++)
+      if (constraint_type == 0){
+        switch (cost_func_type)
         {
-          triplet_slack.push_back(T(0, n_step-1 + i, 1e4 * 2 * slack(n_step - 1 + i)));
+        case 0:
+          for (int i = 0; i < 3 * (n_step - 1); i++)
+          {
+            triplet_slack.push_back(T(0, 3 * (n_step - 1) + i, 1e4 * 2 * slack(3 * (n_step - 1) + i)));
+          }
+          break;
+        case 1:
+          for (int i = 0; i < 3 * (n_step - 1); i++)
+          {
+            triplet_slack.push_back(T(0, 3 * (n_step - 1) + i, 1e4));
+          }
+          break;
+        case 2:
+          for (int i = 0; i < 3 * (n_step - 1); i++)
+          {
+            triplet_slack.push_back(T(0, 3 * (n_step - 1) + i, 1e4 * slack(3 * (n_step - 1) + i) / slack.tail(3 * (n_step - 1)).norm()));
+          }
+          break;
         }
-        break;
-      case 1:
-        for (int i = 0; i < n_step - 1; i++)
-        {
-          triplet_slack.push_back(T(0, n_step-1 + i, 1e4));
-        }
-        break;
-      case 2:
-        for (int i = 0; i < n_step - 1; i++)
-        {
-          triplet_slack.push_back(T(0, n_step-1 + i, 1e4 * slack(n_step - 1 + i) / slack.tail(n_step - 1).norm()));
-        }
-        break;
+        jac.setFromTriplets(triplet_slack.begin(), triplet_slack.end());
       }
-      jac.setFromTriplets(triplet_slack.begin(), triplet_slack.end());
     }
   }
 
@@ -854,6 +967,7 @@ public:
 private:
   int cost_func_type;
   int n_step;
+  int constraint_type;
 };
 
 } // namespace ifopt
