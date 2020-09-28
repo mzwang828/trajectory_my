@@ -193,7 +193,8 @@ int main(int argc, char ** argv)
   Eigen::VectorXd q = randomConfiguration(model);
   
   Eigen::VectorXd q_test(model.nq);
-  q_test << -0.05,-0.80,1.55,-0.96,1.57,-0.00, 0.50, 0.13, cos(0.0), sin(0.0);
+  q_test << -0.05,-0.80,1.55,-0.96,1.57,-0.00, 0.50, 0.13, cos(0.1), sin(0.1);
+  pinocchio::computeJointJacobians(model, data, q_test);
   pinocchio::framesForwardKinematics(model, data, q_test);
   Eigen::Matrix3d ee_rotation, box_root_rotation;
   Eigen::Vector3d ee_translation, box_front_translation, box_root_translation,
@@ -241,8 +242,8 @@ int main(int argc, char ** argv)
   double distance_right = distRes.min_distance;
 
   std::cout << "---------------\n";
-  std::cout << "distance box: " << distance_box << "\n";
-  std::cout << "distance front: " << distance_front << "\n";
-  std::cout << "distance left: " << distance_left << "\n";
-  std::cout << "distance right: " << distance_right << "\n";
+  pinocchio::Data::Matrix6x J_box(6, model.nv);
+  J_box.setZero();
+  getFrameJacobian(model, data, model.getFrameId("box"), LOCAL_WORLD_ALIGNED, J_box);
+  std::cout << "box jacobian:\n " << J_box << "\n";
 }
