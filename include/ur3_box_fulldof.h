@@ -215,6 +215,7 @@ public:
   mutable Eigen::MatrixXd fext_robot, fext_box; // used to save fext values for each joint
   mutable Eigen::MatrixXd dDistance_box_dq, dDistance_front_dq,
                           dDistance_left_dq, dDistance_right_dq; // numerical gradients for distance
+  mutable Eigen::MatrixXd goal_local; // goal in box local frame
   // Input Mapping & Friction
   Eigen::MatrixXd B, f;
   int n_dof;                    // number of freedom
@@ -283,7 +284,10 @@ public:
     right_normal << 0, 1, 0;
     robot_contact_normal << 0, -1, 0;
     goal_v3d << goal[0], goal[1], 0;
-    
+
+    goal_local.resize(3, n_step - 1);
+    goal_local.setZero();
+
     J_front_remapped.resize(n_dof, n_step - 1);
     J_front_remapped.setZero();
     J_left_remapped.resize(n_dof, n_step - 1);
@@ -495,7 +499,8 @@ public:
       model.frames[object_leftId].placement.translation() = left_r_j2c;
       model.frames[object_rightId].placement.translation() = right_r_j2c;
 
-      Eigen::Vector3d goal_local = root_joint_frame_placement.inverse().act(goal_v3d);
+      // goal_local.col(i) = root_joint_frame_placement.inverse().act(goal_v3d);
+      goal_local.col(i) << 1.0, -1.0, 0.0;
 
       pinocchio::computeJointJacobians(model, data_next, q_next);
       pinocchio::framesForwardKinematics(model, data_next, q_next);
@@ -618,30 +623,73 @@ public:
       //     Minv * (data_next.nle - effort_remap -
       //     J_remapped.col(i) * exforce(i + 1) + f * tanh(20 * vel(n_dof * (i) + 3)));
 
+      // distance box constraint
+      g(n_dof * 2 * (n_step - 1) + 0 * (n_step - 1) + i) =
+          distance_box;
+
       // Contact constraints
       // front
-      g(n_dof * 2 * (n_step - 1) + i) = distance_front - d_slack(i);
-      // left
+      g(n_dof * 2 * (n_step - 1) + 1 * (n_step - 1) + i) = 
+          distance_front - d_slack(i);
       g(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i) = 
-          distance_left - d_slack(n_step - 1 + i);
-      // right
+          front_normal.dot(goal_local.col(i)) * exforce(i + 1);
+      g(n_dof * 2 * (n_step - 1) + 3 * (n_step - 1) + i) = 
+          (exforce(i + 1) * d_slack(i) - df_slack(i));
+      // left
       g(n_dof * 2 * (n_step - 1) + 4 * (n_step - 1) + i) = 
+          distance_left - d_slack(n_step - 1 + i);
+      g(n_dof * 2 * (n_step - 1) + 5 * (n_step - 1) + i) = 
+          left_normal.dot(goal_local.col(i)) * exforce(n_step + i + 1);
+      g(n_dof * 2 * (n_step - 1) + 6 * (n_step - 1) + i) = 
+          (exforce(n_step + i + 1) * d_slack(n_step - 1 + i)
+          - df_slack(1 * (n_step - 1) + i));
+      // right
+      g(n_dof * 2 * (n_step - 1) + 7 * (n_step - 1) + i) = 
           distance_right - d_slack(2 * (n_step - 1) + i);
+      g(n_dof * 2 * (n_step - 1) + 8 * (n_step - 1) + i) = 
+          right_normal.dot(goal_local.col(i)) * exforce(2 * n_step + i + 1);
+      g(n_dof * 2 * (n_step - 1) + 9 * (n_step - 1) + i) = 
+          (exforce(2 * n_step + i + 1) * d_slack(2 * (n_step - 1) + i)
+          - df_slack(2 * (n_step - 1) + i));
+
+      // // front
+      // g(n_dof * 2 * (n_step - 1) + 1 * (n_step - 1) + i) = 
+      //     distance_front - d_slack(i);
+      // g(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i) = 
+      //     exforce(i + 1);
+      // g(n_dof * 2 * (n_step - 1) + 3 * (n_step - 1) + i) = 
+      //     (exforce(i + 1) * d_slack(i) - df_slack(i));
+      // // left
+      // g(n_dof * 2 * (n_step - 1) + 4 * (n_step - 1) + i) = 
+      //     distance_left - d_slack(n_step - 1 + i);
+      // g(n_dof * 2 * (n_step - 1) + 5 * (n_step - 1) + i) = 
+      //      exforce(n_step + i + 1);
+      // g(n_dof * 2 * (n_step - 1) + 6 * (n_step - 1) + i) = 
+      //     (exforce(n_step + i + 1) * d_slack(n_step - 1 + i)
+      //     - df_slack(1 * (n_step - 1) + i));
+      // // right
+      // g(n_dof * 2 * (n_step - 1) + 7 * (n_step - 1) + i) = 
+      //     distance_right - d_slack(2 * (n_step - 1) + i);
+      // g(n_dof * 2 * (n_step - 1) + 8 * (n_step - 1) + i) = 
+      //     - exforce(2 * n_step + i + 1);
+      // g(n_dof * 2 * (n_step - 1) + 9 * (n_step - 1) + i) = 
+      //     -(exforce(2 * n_step + i + 1) * d_slack(2 * (n_step - 1) + i)
+      //     - df_slack(2 * (n_step - 1) + i));
 
       // Complementary
-      if (constraint_type == 0){
-        // front
-        g(n_dof * 2 * (n_step - 1) + n_step - 1 + i) =
-            exforce(i + 1) * d_slack(i) - df_slack(i);
-        // left
-        g(n_dof * 2 * (n_step - 1) + 3 * (n_step - 1) + i) = 
-            exforce(n_step + i + 1) * d_slack(n_step - 1 + i)
-            - df_slack(1 * (n_step - 1) + i);
-        // right
-        g(n_dof * 2 * (n_step - 1) + 5 * (n_step - 1) + i) = 
-            exforce(2 * n_step + i + 1) * d_slack(2 * (n_step - 1) + i)
-            - df_slack(2 * (n_step - 1) + i);
-      }
+      // if (constraint_type == 0){
+      //   // front
+      //   g(n_dof * 2 * (n_step - 1) + n_step - 1 + i) =
+      //       exforce(i + 1) * d_slack(i) - df_slack(i);
+      //   // left
+      //   g(n_dof * 2 * (n_step - 1) + 3 * (n_step - 1) + i) = 
+      //       exforce(n_step + i + 1) * d_slack(n_step - 1 + i)
+      //       - df_slack(1 * (n_step - 1) + i);
+      //   // right
+      //   g(n_dof * 2 * (n_step - 1) + 5 * (n_step - 1) + i) = 
+      //       exforce(2 * n_step + i + 1) * d_slack(2 * (n_step - 1) + i)
+      //       - df_slack(2 * (n_step - 1) + i);
+      // }
       // state-trigger
       // else if (constraint_type == 1){
       //   // front
@@ -655,9 +703,6 @@ public:
       //       -std::min(-exforce(2 * n_step + i + 1), 0.0) * 
       //       slack(2 * (n_step - 1) + i);
       // }
-
-      g(n_dof * 2 * (n_step - 1) + 6 * (n_step - 1) + i) =
-          distance_box;
     }
     return g;
   };
@@ -668,39 +713,26 @@ public:
     VecBound bounds(GetRows());
     for (int i = 0; i < n_dof * 2 * (n_step - 1); i++)
       bounds.at(i) = Bounds(0.0, 0.0);
-    if (constraint_type == 0){
-      for (int i = 0; i < n_step - 1; i++) {
-        bounds.at(n_dof * 2 * (n_step - 1) + i) = Bounds(0.0, 0.0);
-        bounds.at(n_dof * 2 * (n_step - 1) + n_step - 1 + i) = Bounds(-inf, 0.0);
-        bounds.at(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i) = 
-            Bounds(0.0, 0.0);
-        bounds.at(n_dof * 2 * (n_step - 1) + 3 * (n_step - 1) + i) = 
-            Bounds(-inf, 0.0);
-        bounds.at(n_dof * 2 * (n_step - 1) + 4 * (n_step - 1) + i) = 
-            Bounds(0.0, 0.0);
-        bounds.at(n_dof * 2 * (n_step - 1) + 5 * (n_step - 1) + i) = 
-            Bounds(-inf, 0.0);
-        bounds.at(n_dof * 2 * (n_step - 1) + 6 * (n_step - 1) + i) =
-            Bounds(0.0, inf);
-      }
+    for (int i = 0; i < n_step - 1; i++) {
+      bounds.at(n_dof * 2 * (n_step - 1) + i) = Bounds(0.0, inf);
+      bounds.at(n_dof * 2 * (n_step - 1) + n_step - 1 + i) = Bounds(0.0, 0.0);
+      bounds.at(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i) = 
+          Bounds(0.0, inf);
+      bounds.at(n_dof * 2 * (n_step - 1) + 3 * (n_step - 1) + i) = 
+          Bounds(-inf, 0.0);
+      bounds.at(n_dof * 2 * (n_step - 1) + 4 * (n_step - 1) + i) = 
+          Bounds(0.0, 0.0);
+      bounds.at(n_dof * 2 * (n_step - 1) + 5 * (n_step - 1) + i) = 
+          Bounds(0.0, inf);
+      bounds.at(n_dof * 2 * (n_step - 1) + 6 * (n_step - 1) + i) =
+          Bounds(-inf, 0.0);
+      bounds.at(n_dof * 2 * (n_step - 1) + 7 * (n_step - 1) + i) =
+          Bounds(0.0, 0.0);
+      bounds.at(n_dof * 2 * (n_step - 1) + 8 * (n_step - 1) + i) =
+          Bounds(0.0, inf);
+      bounds.at(n_dof * 2 * (n_step - 1) + 9 * (n_step - 1) + i) =
+          Bounds(-inf, 0.0);
     }
-    else if (constraint_type == 1){
-      for (int i = 0; i < n_step - 1; i++) {
-        bounds.at(n_dof * 2 * (n_step - 1) + i) = Bounds(0.0, 0.0);
-        bounds.at(n_dof * 2 * (n_step - 1) + n_step - 1 + i) = Bounds(0.0, 0.0);
-        bounds.at(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i) = 
-            Bounds(0.0, 0.0);
-        bounds.at(n_dof * 2 * (n_step - 1) + 3 * (n_step - 1) + i) = 
-            Bounds(0.0,0.0);
-        bounds.at(n_dof * 2 * (n_step - 1) + 4 * (n_step - 1) + i) = 
-            Bounds(0.0, 0.0);
-        bounds.at(n_dof * 2 * (n_step - 1) + 5 * (n_step - 1) + i) = 
-            Bounds(0.0, 0.0);
-        bounds.at(n_dof * 2 * (n_step - 1) + 6 * (n_step - 1) + i) =
-            Bounds(0.0, inf);
-      }
-    }
-
     return bounds;
   }
 
@@ -770,18 +802,19 @@ public:
                                     n_dof * (i + 1) + k,
                                     -data_next.ddq_dq(j, k))); // ddq_dq_k+1
           }
-          triplet_pos.push_back(T(n_dof * 2 * (n_step - 1) + i, 
-                                  n_dof * (i+1) + j, 
-                                  dDistance_front_dq(i, j))); //dDistance_front_k+1_dq_k+1
-          triplet_pos.push_back(T(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i, 
-                                  n_dof * (i+1) + j, 
-                                  dDistance_left_dq(i, j))); //dDistance_left_k+1_dq_k+1
-          triplet_pos.push_back(T(n_dof * 2 * (n_step - 1) + 4 * (n_step - 1) + i, 
-                                  n_dof * (i+1) + j, 
-                                  dDistance_right_dq(i, j))); //dDistance_right_k+1_dq_k+1
-          triplet_pos.push_back(T(n_dof * 2 * (n_step - 1) + 6 * (n_step - 1) + i, 
+          triplet_pos.push_back(T(n_dof * 2 * (n_step - 1) + 0 * (n_step - 1) + i, 
                                   n_dof * (i+1) + j, 
                                   dDistance_box_dq(i, j))); //dDistance_box_k+1_dq_k+1
+          triplet_pos.push_back(T(n_dof * 2 * (n_step - 1) + 1 * (n_step - 1) + i, 
+                                  n_dof * (i+1) + j, 
+                                  dDistance_front_dq(i, j))); //dDistance_front_k+1_dq_k+1
+          triplet_pos.push_back(T(n_dof * 2 * (n_step - 1) + 4 * (n_step - 1) + i, 
+                                  n_dof * (i+1) + j, 
+                                  dDistance_left_dq(i, j))); //dDistance_left_k+1_dq_k+1
+          triplet_pos.push_back(T(n_dof * 2 * (n_step - 1) + 7 * (n_step - 1) + i, 
+                                  n_dof * (i+1) + j, 
+                                  dDistance_right_dq(i, j))); //dDistance_right_k+1_dq_k+1
+
         }
         if (var_set == "velocity") {
           // Triplet for velocity
@@ -839,34 +872,43 @@ public:
         }
       }
       if (var_set == "exforce") {
-        triplet_exforce.push_back(T(n_dof * 2 * (n_step - 1) + n_step - 1 + i, 
-                                  i + 1, d_slack(i)));
+        triplet_exforce.push_back(T(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i, 
+                                  i + 1, front_normal.dot(goal_local.col(i))));
         triplet_exforce.push_back(T(n_dof * 2 * (n_step - 1) + 3 * (n_step - 1) + i, 
-                                  n_step + i + 1, d_slack(n_step - 1 + i)));
+                                  i + 1, d_slack(i)));
         triplet_exforce.push_back(T(n_dof * 2 * (n_step - 1) + 5 * (n_step - 1) + i, 
-                                  2 * n_step + i + 1, d_slack(2 * (n_step - 1) + i)));
+                                  n_step + i + 1, left_normal.dot(goal_local.col(i))));
+        triplet_exforce.push_back(T(n_dof * 2 * (n_step - 1) + 6 * (n_step - 1) + i, 
+                                  n_step + i + 1, d_slack(n_step - 1 + i)));
+        triplet_exforce.push_back(T(n_dof * 2 * (n_step - 1) + 8 * (n_step - 1) + i, 
+                                  2 * n_step + i + 1, right_normal.dot(goal_local.col(i))));
+        triplet_exforce.push_back(T(n_dof * 2 * (n_step - 1) + 9 * (n_step - 1) + i, 
+                                  2 * n_step + i + 1, 
+                                  d_slack(2 * (n_step - 1) + i)));
       }
       if (var_set == "d_slack") {
-        triplet_d_slack.push_back(T(n_dof * 2 * (n_step - 1) + i, i, -1));
-        triplet_d_slack.push_back(T(n_dof * 2 * (n_step - 1) + n_step - 1 + i, 
-                                i, exforce(i + 1)));
-        triplet_d_slack.push_back(T(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i, 
-                                n_step - 1 + i, -1));
+        triplet_d_slack.push_back(T(n_dof * 2 * (n_step - 1) + 1 * (n_step - 1) + i, 
+                                  i, -1));
         triplet_d_slack.push_back(T(n_dof * 2 * (n_step - 1) + 3 * (n_step - 1) + i, 
-                                n_step - 1 + i, exforce(n_step + i + 1)));                                
+                                  i, exforce(i + 1)));
         triplet_d_slack.push_back(T(n_dof * 2 * (n_step - 1) + 4 * (n_step - 1) + i, 
-                                2 * (n_step - 1) + i, -1));
-        triplet_d_slack.push_back(T(n_dof * 2 * (n_step - 1) + 5 * (n_step - 1) + i, 
-                                2 * (n_step - 1) + i, 
-                                exforce(2 * n_step + 1 + 1)));
+                                  n_step - 1 + i, -1));
+        triplet_d_slack.push_back(T(n_dof * 2 * (n_step - 1) + 6 * (n_step - 1) + i, 
+                                  n_step - 1 + i, 
+                                  exforce(n_step + i + 1)));                                
+        triplet_d_slack.push_back(T(n_dof * 2 * (n_step - 1) + 7 * (n_step - 1) + i, 
+                                  2 * (n_step - 1) + i, -1));
+        triplet_d_slack.push_back(T(n_dof * 2 * (n_step - 1) + 9 * (n_step - 1) + i, 
+                                  2 * (n_step - 1) + i, 
+                                  exforce(2 * n_step + 1 + 1)));
       }
       if (var_set == "df_slack") {
-        triplet_df_slack.push_back(T(n_dof * 2 * (n_step - 1) + n_step - 1 + i, 
-                                i, -1));
         triplet_df_slack.push_back(T(n_dof * 2 * (n_step - 1) + 3 * (n_step - 1) + i, 
-                                n_step - 1 + i, -1));
-        triplet_df_slack.push_back(T(n_dof * 2 * (n_step - 1) + 5 * (n_step - 1) + i, 
-                                2 * (n_step - 1) + i, -1));
+                                   i, -1));
+        triplet_df_slack.push_back(T(n_dof * 2 * (n_step - 1) + 6 * (n_step - 1) + i, 
+                                   n_step - 1 + i, -1));
+        triplet_df_slack.push_back(T(n_dof * 2 * (n_step - 1) + 9 * (n_step - 1) + i, 
+                                   2 * (n_step - 1) + i, -1));
      }
     } 
     if (var_set == "position") {

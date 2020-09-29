@@ -20,7 +20,8 @@ int main()
   Eigen::VectorXd q_dot_init(ndof*nsteps);
   Eigen::VectorXd control_init(n_control*nsteps);
   Eigen::VectorXd exforce_init(n_exforce*nsteps);
-  Eigen::VectorXd slack_init(2*n_exforce*(nsteps-1));
+  Eigen::VectorXd d_slack_init(n_exforce*(nsteps-1));
+  Eigen::VectorXd df_slack_init(n_exforce*(nsteps-1));
   Problem nlp;
 
   //read in initial values
@@ -36,7 +37,8 @@ int main()
     nlp.AddVariableSet  (std::make_shared<ExVariables>(ndof*nsteps, "velocity"));
     nlp.AddVariableSet  (std::make_shared<ExVariables>(n_control*nsteps, "effort"));
     nlp.AddVariableSet  (std::make_shared<ExVariables>(n_exforce*nsteps, "exforce"));
-    nlp.AddVariableSet  (std::make_shared<ExVariables>(2*n_exforce*(nsteps-1), "slack"));
+    nlp.AddVariableSet  (std::make_shared<ExVariables>(n_exforce*(nsteps-1), "d_slack"));
+    nlp.AddVariableSet  (std::make_shared<ExVariables>(n_exforce*(nsteps-1), "df_slack"));
   } else {
     std::cout << "Found trajectory from previous iteration.\n";
     std::string line;
@@ -67,18 +69,25 @@ int main()
     }}
     getline(init_trajfile, line);
     {std::istringstream ss (line);
-    for(int i = 0; i < 2*(nsteps-1); i++){
+    for(int i = 0; i < n_exforce*(nsteps-1); i++){
       ss >> value;
-      slack_init(i) = value;
+      d_slack_init(i) = value;
+    }}
+    getline(init_trajfile, line);
+    {std::istringstream ss (line);
+    for(int i = 0; i < n_exforce*(nsteps-1); i++){
+      ss >> value;
+      df_slack_init(i) = value;
     }}
     nlp.AddVariableSet  (std::make_shared<ExVariables>(ndof*nsteps, "position", q_init));
     nlp.AddVariableSet  (std::make_shared<ExVariables>(ndof*nsteps, "velocity", q_dot_init));
     nlp.AddVariableSet  (std::make_shared<ExVariables>(n_control*nsteps, "effort", control_init));
     nlp.AddVariableSet  (std::make_shared<ExVariables>(n_exforce*nsteps, "exforce", exforce_init));
-    nlp.AddVariableSet  (std::make_shared<ExVariables>(2*n_exforce*(nsteps-1), "slack", slack_init));
+    nlp.AddVariableSet  (std::make_shared<ExVariables>(n_exforce*(nsteps-1), "d_slack", d_slack_init));
+    nlp.AddVariableSet  (std::make_shared<ExVariables>(n_exforce*(nsteps-1), "df_slack", df_slack_init));
   }
 
-  nlp.AddConstraintSet(std::make_shared<ExConstraint>(2*ndof*(nsteps-1)+7*(nsteps-1)));
+  nlp.AddConstraintSet(std::make_shared<ExConstraint>(2*ndof*(nsteps-1)+10*(nsteps-1)));
   nlp.AddCostSet      (std::make_shared<ExCost>());
   nlp.PrintCurrent();
 
@@ -93,25 +102,28 @@ int main()
 
   Eigen::VectorXd variables = nlp.GetOptVariables()->GetValues();
 
+
   Eigen::Map<Eigen::MatrixXd> Q(variables.segment(0, ndof * nsteps).data(), ndof, nsteps);
   Eigen::Map<Eigen::MatrixXd> Q_dot(variables.segment(ndof * nsteps, ndof * nsteps).data(), ndof, nsteps);
   Eigen::Map<Eigen::MatrixXd> C(variables.segment(2 * ndof * nsteps, n_control * nsteps).data(), n_control, nsteps);
   Eigen::Map<Eigen::MatrixXd> F(variables.segment(2 * ndof * nsteps + n_control * nsteps, n_exforce * nsteps).data(), nsteps, n_exforce);
   Eigen::Map<Eigen::MatrixXd> d_slack(variables.segment(2 * ndof * nsteps + n_control * nsteps + n_exforce * nsteps, n_exforce * (nsteps - 1)).data(), nsteps - 1, n_exforce);
-  Eigen::Map<Eigen::MatrixXd> f_slack(variables.segment(2 * ndof * nsteps + n_control * nsteps + n_exforce * nsteps + n_exforce * (nsteps - 1), n_exforce * (nsteps - 1)).data(), nsteps - 1, n_exforce);
+  Eigen::Map<Eigen::MatrixXd> df_slack(variables.segment(2 * ndof * nsteps + n_control * nsteps + n_exforce * nsteps + n_exforce * (nsteps - 1), n_exforce * (nsteps - 1)).data(), nsteps - 1, n_exforce);
 
   std::cout << "Q: \n" << Q << std::endl;
   std::cout << "Q_dot: \n" << Q_dot << std::endl;
   std::cout << "C: \n" << C << std::endl;
   std::cout << "eF: \n" << F.transpose() << std::endl;
   std::cout << "distance_slack: \n" << d_slack.transpose() << std::endl;
-  std::cout << "force*distance slack: \n" << f_slack.transpose() << std::endl;
+  std::cout << "force*distance slack: \n" << df_slack.transpose() << std::endl;
 
   Eigen::VectorXd Q_save = nlp.GetOptVariables()->GetComponent("position")->GetValues();
   Eigen::VectorXd Q_dot_save = nlp.GetOptVariables()->GetComponent("velocity")->GetValues();
   Eigen::VectorXd C_save = nlp.GetOptVariables()->GetComponent("effort")->GetValues();
   Eigen::VectorXd F_save = nlp.GetOptVariables()->GetComponent("exforce")->GetValues();
-  Eigen::VectorXd slack_save = nlp.GetOptVariables()->GetComponent("slack")->GetValues();
+  Eigen::VectorXd dslack_save = nlp.GetOptVariables()->GetComponent("d_slack")->GetValues();
+  Eigen::VectorXd dfslack_save = nlp.GetOptVariables()->GetComponent("df_slack")->GetValues();
+
 
   // write trajectory to file
   std::ofstream trajFile;
@@ -121,7 +133,8 @@ int main()
     trajFile << Q_dot_save.transpose() << "\n";
     trajFile << C_save.transpose() << "\n";
     trajFile << F_save.transpose() << "\n";
-    trajFile << slack_save.transpose() << "\n";
+    trajFile << dslack_save.transpose() << "\n";
+    trajFile << dfslack_save.transpose() << "\n";
   }
   else{
     std::cout << " WARNING: Unable to open the trajectory file.\n";
