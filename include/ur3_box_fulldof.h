@@ -635,7 +635,7 @@ public:
           -std::min(front_normal.dot(goal_local.col(i)), 0.0) * exforce(i + 1);
       g(n_dof * 2 * (n_step - 1) + 3 * (n_step - 1) + i) = 
           -std::min(-front_normal.dot(goal_local.col(i)), 0.0) * 
-          (exforce(i + 1) * d_slack(i) - df_slack(i));
+          (exforce(i + 1) * d_slack(i)) - df_slack(i);
       // left
       g(n_dof * 2 * (n_step - 1) + 4 * (n_step - 1) + i) = 
           distance_left - d_slack(n_step - 1 + i);
@@ -643,8 +643,8 @@ public:
           -std::min(left_normal.dot(goal_local.col(i)), 0.0) * exforce(n_step + i + 1);
       g(n_dof * 2 * (n_step - 1) + 6 * (n_step - 1) + i) = 
           -std::min(-left_normal.dot(goal_local.col(i)), 0.0) * 
-          (exforce(n_step + i + 1) * d_slack(n_step - 1 + i)
-          - df_slack(1 * (n_step - 1) + i));
+          (exforce(n_step + i + 1) * d_slack(n_step - 1 + i))
+          - df_slack(1 * (n_step - 1) + i);
       // right
       g(n_dof * 2 * (n_step - 1) + 7 * (n_step - 1) + i) = 
           distance_right - d_slack(2 * (n_step - 1) + i);
@@ -652,8 +652,8 @@ public:
           -std::min(right_normal.dot(goal_local.col(i)), 0.0) * exforce(2 * n_step + i + 1);
       g(n_dof * 2 * (n_step - 1) + 9 * (n_step - 1) + i) = 
           -std::min(-right_normal.dot(goal_local.col(i)), 0.0) * 
-          (exforce(2 * n_step + i + 1) * d_slack(2 * (n_step - 1) + i)
-          - df_slack(2 * (n_step - 1) + i));
+          (exforce(2 * n_step + i + 1) * d_slack(2 * (n_step - 1) + i))
+          - df_slack(2 * (n_step - 1) + i);
 
       // // front
       // g(n_dof * 2 * (n_step - 1) + 1 * (n_step - 1) + i) = 
@@ -720,19 +720,19 @@ public:
       bounds.at(n_dof * 2 * (n_step - 1) + i) = Bounds(0.0, inf);
       bounds.at(n_dof * 2 * (n_step - 1) + n_step - 1 + i) = Bounds(0.0, 0.0);
       bounds.at(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i) = 
-          Bounds(-inf, 0.0);
+          Bounds(0.0, 0.0);
       bounds.at(n_dof * 2 * (n_step - 1) + 3 * (n_step - 1) + i) = 
           Bounds(-inf, 0.0);
       bounds.at(n_dof * 2 * (n_step - 1) + 4 * (n_step - 1) + i) = 
           Bounds(0.0, 0.0);
       bounds.at(n_dof * 2 * (n_step - 1) + 5 * (n_step - 1) + i) = 
-          Bounds(-inf, 0.0);
+          Bounds(0.0, 0.0);
       bounds.at(n_dof * 2 * (n_step - 1) + 6 * (n_step - 1) + i) =
           Bounds(-inf, 0.0);
       bounds.at(n_dof * 2 * (n_step - 1) + 7 * (n_step - 1) + i) =
           Bounds(0.0, 0.0);
       bounds.at(n_dof * 2 * (n_step - 1) + 8 * (n_step - 1) + i) =
-          Bounds(-inf, 0.0);
+          Bounds(0.0, 0.0);
       bounds.at(n_dof * 2 * (n_step - 1) + 9 * (n_step - 1) + i) =
           Bounds(-inf, 0.0);
     }
@@ -907,11 +907,11 @@ public:
       }
       if (var_set == "df_slack") {
         triplet_df_slack.push_back(T(n_dof * 2 * (n_step - 1) + 3 * (n_step - 1) + i, 
-                                   i, std::min(-front_normal.dot(goal_local.col(i)), 0.0)));
+                                   i, -1));
         triplet_df_slack.push_back(T(n_dof * 2 * (n_step - 1) + 6 * (n_step - 1) + i, 
-                                   n_step - 1 + i, std::min(-left_normal.dot(goal_local.col(i)), 0.0)));
+                                   n_step - 1 + i, -1));
         triplet_df_slack.push_back(T(n_dof * 2 * (n_step - 1) + 9 * (n_step - 1) + i, 
-                                   2 * (n_step - 1) + i, std::min(-right_normal.dot(goal_local.col(i)), 0.0)));
+                                   2 * (n_step - 1) + i, -1));
      }
     } 
     if (var_set == "position") {
