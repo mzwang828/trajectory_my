@@ -87,7 +87,7 @@ int main()
     nlp.AddVariableSet  (std::make_shared<ExVariables>(n_exforce*(nsteps-1), "df_slack", df_slack_init));
   }
 
-  nlp.AddConstraintSet(std::make_shared<ExConstraint>(2*ndof*(nsteps-1)+10*(nsteps-1)));
+  nlp.AddConstraintSet(std::make_shared<ExConstraint>(2*ndof*(nsteps-1)+13*(nsteps-1)));
   nlp.AddCostSet      (std::make_shared<ExCost>());
   nlp.PrintCurrent();
 

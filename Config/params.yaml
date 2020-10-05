@@ -14,7 +14,7 @@ n_dof: 9
 n_step: 20
 t_step: 0.05
 n_control: 6
-n_exforce: 3
+n_exforce: 4
 constraint_type: 0 # 0 -> complementary, 1 -> state-trigger
-box_goal: [0.56, -0.05]
+box_goal: [0.59, -0.03]
 cost_func_type: 1 # 0 -> SquaredNorm, 1 -> L1, 2 -> L2
