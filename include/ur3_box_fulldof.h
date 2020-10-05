@@ -205,15 +205,17 @@ public:
   mutable pinocchio::Model robot_model, box_model, model;
   pinocchio::GeometryModel geom_model, box_geom_model;
   pinocchio::PairIndex cp_index;
-  pinocchio::FrameIndex contactId, object_frontId, object_leftId, object_rightId;
-  Eigen::Vector3d front_normal, left_normal, right_normal; // normal vector point to the front plane
+  pinocchio::FrameIndex contactId, object_frontId, object_backId,
+                        object_leftId, object_rightId;
+  Eigen::Vector3d front_normal, back_normal, left_normal, right_normal; // normal vector point to the front plane
   Eigen::Vector3d robot_contact_normal;
   Eigen::Vector3d goal_v3d;
   mutable Eigen::MatrixXd J_front_remapped,
+                          J_back_remapped,
                           J_left_remapped,
                           J_right_remapped; // used to save calculated Jacobians for exforce
   mutable Eigen::MatrixXd fext_robot, fext_box; // used to save fext values for each joint
-  mutable Eigen::MatrixXd dDistance_box_dq, dDistance_front_dq,
+  mutable Eigen::MatrixXd dDistance_box_dq, dDistance_front_dq, dDistance_back_dq,
                           dDistance_left_dq, dDistance_right_dq; // numerical gradients for distance
   // Input Mapping & Friction
   Eigen::MatrixXd B, f;
@@ -254,6 +256,9 @@ public:
     object_rightId = model.addFrame(
         pinocchio::Frame("object_right", model.getJointId("box_root_joint"), -1,
         pinocchio::SE3::Identity(), pinocchio::OP_FRAME));
+    object_backId = model.addFrame(
+        pinocchio::Frame("object_back", model.getJointId("box_root_joint"), -1,
+        pinocchio::SE3::Identity(), pinocchio::OP_FRAME));
     // build the geometry model
     pinocchio::urdf::buildGeom(model, robot_filename, pinocchio::COLLISION,
                                geom_model, PINOCCHIO_MODEL_DIR);
@@ -279,6 +284,7 @@ public:
     goal = params["box_goal"].as<std::vector<double>>();
 
     front_normal << 1, 0, 0;
+    back_normal << -1, 0, 0;
     left_normal << 0, -1, 0;
     right_normal << 0, 1, 0;
     robot_contact_normal << 0, -1, 0;
@@ -290,6 +296,8 @@ public:
     J_left_remapped.setZero();
     J_right_remapped.resize(n_dof, n_step - 1);
     J_right_remapped.setZero();
+    J_back_remapped.resize(n_dof, n_step - 1);
+    J_back_remapped.setZero();
     
     fext_robot.resize(6, n_step - 1); // fext for robot
     fext_robot.setZero();
@@ -314,6 +322,8 @@ public:
     dDistance_left_dq.setZero();
     dDistance_right_dq.resize(n_step, n_dof);
     dDistance_right_dq.setZero();
+    dDistance_back_dq.resize(n_step, n_dof);
+    dDistance_back_dq.setZero();
   }
 
   void setRootJointBounds(pinocchio::Model &model,
@@ -371,7 +381,7 @@ public:
       pinocchio::framesForwardKinematics(model, data, q_next);
       Eigen::Matrix3d ee_rotation, box_root_rotation;
       Eigen::Vector3d ee_translation, box_front_translation, box_root_translation,
-                      box_left_translation, box_right_translation;
+                      box_left_translation, box_right_translation, box_back_translation;
       ee_rotation = data.oMf[model.getFrameId("ee_link")].rotation();
       ee_translation = data.oMf[model.getFrameId("ee_link")].translation();
       box_root_rotation = data.oMf[model.getFrameId("box")].rotation();
@@ -379,12 +389,14 @@ public:
       box_front_translation = data.oMf[model.getFrameId("obj_front")].translation();
       box_left_translation = data.oMf[model.getFrameId("obj_left")].translation();
       box_right_translation = data.oMf[model.getFrameId("obj_right")].translation();
+      box_back_translation = data.oMf[model.getFrameId("obj_back")].translation();
 
       boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_box_geom (new hpp::fcl::Box (0.1,0.1,0.1));
       // boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_ee_geom (new hpp::fcl::Cylinder (0.03, 0.00010));
       boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_box_front_geom (new hpp::fcl::Box (0.00010,0.08,0.08));
       boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_box_left_geom (new hpp::fcl::Box (0.08,0.00010,0.08));
       boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_box_right_geom (new hpp::fcl::Box (0.08,0.00010,0.08));
+      boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_box_back_geom (new hpp::fcl::Box (0.00010,0.08,0.08));
 
       boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_ee_geom (new hpp::fcl::Sphere (0.005));
       // boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_box_front_geom (new hpp::fcl::Sphere (0.05));
@@ -394,6 +406,7 @@ public:
       hpp::fcl::CollisionObject fcl_box_front(fcl_box_front_geom, box_root_rotation, box_front_translation);
       hpp::fcl::CollisionObject fcl_box_left(fcl_box_left_geom, box_root_rotation, box_left_translation);
       hpp::fcl::CollisionObject fcl_box_right(fcl_box_right_geom, box_root_rotation, box_right_translation);
+      hpp::fcl::CollisionObject fcl_box_back(fcl_box_back_geom, box_root_rotation, box_back_translation);
 
       hpp::fcl::DistanceRequest distReq;
       hpp::fcl::DistanceResult distRes;
@@ -416,6 +429,10 @@ public:
       distRes.clear();
       hpp::fcl::distance(&fcl_ee, &fcl_box_right, distReq, distRes);
       double distance_right = distRes.min_distance;
+      // distance between EE and back plane, used in force constraints
+      distRes.clear();
+      hpp::fcl::distance(&fcl_ee, &fcl_box_back, distReq, distRes);
+      double distance_back = distRes.min_distance;
 
       //////////////Variable contact points////////////////////////////////
       // Eigen::Vector3d contact_point_ee = distRes.nearest_points[0];
@@ -442,11 +459,13 @@ public:
         box_front_translation = data.oMf[model.getFrameId("obj_front")].translation();
         box_left_translation = data.oMf[model.getFrameId("obj_left")].translation();
         box_right_translation = data.oMf[model.getFrameId("obj_right")].translation();
+        box_back_translation = data.oMf[model.getFrameId("obj_back")].translation();
         fcl_ee.setTransform(ee_rotation, ee_translation); 
         fcl_box.setTransform(box_root_rotation, box_root_translation);
         fcl_box_front.setTransform(box_root_rotation, box_front_translation);
         fcl_box_left.setTransform(box_root_rotation, box_left_translation);
         fcl_box_right.setTransform(box_root_rotation, box_right_translation);
+        fcl_box_back.setTransform(box_root_rotation, box_back_translation);
         distRes.clear();
         hpp::fcl::distance(&fcl_ee, &fcl_box, distReq, distRes);
         double distance_box_plus = distRes.min_distance;
@@ -459,11 +478,15 @@ public:
         distRes.clear();
         hpp::fcl::distance(&fcl_ee, &fcl_box_right, distReq, distRes);
         double distance_right_plus = distRes.min_distance;
+        distRes.clear();
+        hpp::fcl::distance(&fcl_ee, &fcl_box_back, distReq, distRes);
+        double distance_back_plus = distRes.min_distance;
         
         dDistance_box_dq(i, k) = (distance_box_plus - distance_box) / alpha;
         dDistance_front_dq(i, k) = (distance_front_plus - distance_front) / alpha;
         dDistance_left_dq(i, k) = (distance_left_plus - distance_left) / alpha;
         dDistance_right_dq(i, k) = (distance_right_plus - distance_right) / alpha;
+        dDistance_back_dq(i, k) = (distance_back_plus - distance_back) / alpha;
       
         pos_eps[k] -= alpha;
       }
@@ -489,11 +512,12 @@ public:
       // Eigen::Vector3d robot_r_j2c = joint_frame_placement.inverse().act(contact_point_ee);
       // Eigen::Vector3d object_r_j2c = root_joint_frame_placement.inverse().act(contact_point_front);
       Eigen::Vector3d robot_r_j2c(0.0, 0.092, 0.0);
-      Eigen::Vector3d front_r_j2c(-0.05, 0, 0), left_r_j2c(0.0, 0.05, 0.0), right_r_j2c(0.0, -0.05, 0.0);
+      Eigen::Vector3d front_r_j2c(-0.05, 0, 0), left_r_j2c(0.0, 0.05, 0.0), right_r_j2c(0.0, -0.05, 0.0), back_r_j2c(0.05, 0.0, 0.0);
       model.frames[contactId].placement.translation() = robot_r_j2c;
       model.frames[object_frontId].placement.translation() = front_r_j2c;
       model.frames[object_leftId].placement.translation() = left_r_j2c;
       model.frames[object_rightId].placement.translation() = right_r_j2c;
+      model.frames[object_backId].placement.translation() = back_r_j2c;
 
       Eigen::Vector3d goal_local = root_joint_frame_placement.inverse().act(goal_v3d);
 
@@ -503,11 +527,13 @@ public:
       pinocchio::Data::Matrix6x w_J_robot(6, model.nv),
                                 w_J_front(6, model.nv),
                                 w_J_left(6, model.nv),
-                                w_J_right(6, model.nv);
+                                w_J_right(6, model.nv),
+                                w_J_back(6, model.nv);
       w_J_robot.setZero();
       w_J_front.setZero();
       w_J_left.setZero();
       w_J_right.setZero();
+      w_J_back.setZero();
 
       pinocchio::getFrameJacobian(model, data_next, contactId, 
                                   pinocchio::LOCAL, w_J_robot);
@@ -517,6 +543,8 @@ public:
                                   pinocchio::LOCAL, w_J_left);
       pinocchio::getFrameJacobian(model, data_next, object_rightId,
                                   pinocchio::LOCAL, w_J_right);
+      pinocchio::getFrameJacobian(model, data_next, object_backId,
+                                  pinocchio::LOCAL, w_J_back);
                                 
       // J_remapped.col(i) = w_J_robot.topRows(3).transpose() * 
       //       data_next.oMi[model.getJointId("wrist_1_joint")].rotation().transpose() * 
@@ -525,6 +553,7 @@ public:
       J_front_remapped.col(i) = w_J_robot.topRows(3).transpose() * robot_contact_normal + w_J_front.topRows(3).transpose() * front_normal;
       J_left_remapped.col(i) = w_J_robot.topRows(3).transpose() * robot_contact_normal + w_J_left.topRows(3).transpose() * left_normal;
       J_right_remapped.col(i) = w_J_robot.topRows(3).transpose() * robot_contact_normal + w_J_right.topRows(3).transpose() * right_normal;
+      J_back_remapped.col(i) = w_J_robot.topRows(3).transpose() * robot_contact_normal + w_J_back.topRows(3).transpose() * back_normal;
 
       // Calculate NLE, inertial matrix
       pinocchio::nonLinearEffects(model, data_next, q_next,
@@ -535,9 +564,9 @@ public:
           Minv.transpose().triangularView<Eigen::StrictlyLower>();
 
       // Get external force in local joint frame
-      Eigen::VectorXd force_robot(3), force_front(3), force_left(3), force_right(3);
+      Eigen::VectorXd force_robot(3), force_front(3), force_left(3), force_right(3), force_back(3);
       // contact force in [wrist_3_joint] frame at [contact] point
-      force_robot = robot_contact_normal * (exforce(i+1) + exforce(n_step + i+1) + exforce(2*n_step + i+1));
+      force_robot = robot_contact_normal * (exforce(i+1) + exforce(n_step + i+1) + exforce(2*n_step + i+1) + exforce(3*n_step + i+1));
       // Get force and moment at [joint_origin] point
       fext_robot.col(i).head(3) = force_robot;
       fext_robot.col(i)(3) = -robot_r_j2c(2) * force_robot(1) + robot_r_j2c(1) * force_robot(2);
@@ -561,6 +590,12 @@ public:
       fext_box.col(i)(3) += -right_r_j2c(2) * force_right(1) + right_r_j2c(1) * force_right(2);
       fext_box.col(i)(4) += right_r_j2c(2) * force_right(0) - right_r_j2c(0) * force_right(2);
       fext_box.col(i)(5) += -right_r_j2c(1) * force_right(0) + right_r_j2c(0) * force_right(1);
+      // contact force in [object] frame at [contact] point of back surface
+      force_back = back_normal * exforce(3 * n_step + i+1);
+      fext_box.col(i).head(3) += force_back;
+      fext_box.col(i)(3) += -back_r_j2c(2) * force_back(1) + back_r_j2c(1) * force_back(2);
+      fext_box.col(i)(4) += back_r_j2c(2) * force_back(0) - back_r_j2c(0) * force_back(2);
+      fext_box.col(i)(5) += -back_r_j2c(1) * force_back(0) + back_r_j2c(0) * force_back(1);      
       // Calculate acceleration using Aba
       Eigen::VectorXd effort_remap(model.nv);
       effort_remap.setZero();
@@ -627,6 +662,9 @@ public:
       // right
       g(n_dof * 2 * (n_step - 1) + 4 * (n_step - 1) + i) = 
           distance_right - d_slack(2 * (n_step - 1) + i);
+      // back
+      g(n_dof * 2 * (n_step - 1) + 6 * (n_step - 1) + i) = 
+          distance_back - d_slack(3 * (n_step - 1) + i);    
 
       // Complementary
       if (constraint_type == 0){
@@ -641,6 +679,10 @@ public:
         g(n_dof * 2 * (n_step - 1) + 5 * (n_step - 1) + i) = 
             exforce(2 * n_step + i + 1) * d_slack(2 * (n_step - 1) + i)
             - df_slack(2 * (n_step - 1) + i);
+        // back
+        g(n_dof * 2 * (n_step - 1) + 7 * (n_step - 1) + i) = 
+            exforce(3 * n_step + i + 1) * d_slack(3 * (n_step - 1) + i)
+            - df_slack(3 * (n_step - 1) + i);            
       }
       // state-trigger
       // else if (constraint_type == 1){
@@ -656,7 +698,7 @@ public:
       //       slack(2 * (n_step - 1) + i);
       // }
 
-      g(n_dof * 2 * (n_step - 1) + 6 * (n_step - 1) + i) =
+      g(n_dof * 2 * (n_step - 1) + 8 * (n_step - 1) + i) =
           distance_box;
     }
     return g;
@@ -680,7 +722,11 @@ public:
             Bounds(0.0, 0.0);
         bounds.at(n_dof * 2 * (n_step - 1) + 5 * (n_step - 1) + i) = 
             Bounds(-inf, 0.0);
-        bounds.at(n_dof * 2 * (n_step - 1) + 6 * (n_step - 1) + i) =
+        bounds.at(n_dof * 2 * (n_step - 1) + 6 * (n_step - 1) + i) = 
+            Bounds(0.0, 0.0);
+        bounds.at(n_dof * 2 * (n_step - 1) + 7 * (n_step - 1) + i) = 
+            Bounds(-inf, 0.0);                        
+        bounds.at(n_dof * 2 * (n_step - 1) + 8 * (n_step - 1) + i) =
             Bounds(0.0, inf);
       }
     }
@@ -781,7 +827,10 @@ public:
                                   dDistance_right_dq(i, j))); //dDistance_right_k+1_dq_k+1
           triplet_pos.push_back(T(n_dof * 2 * (n_step - 1) + 6 * (n_step - 1) + i, 
                                   n_dof * (i+1) + j, 
-                                  dDistance_box_dq(i, j))); //dDistance_box_k+1_dq_k+1
+                                  dDistance_back_dq(i, j))); //dDistance_back_k+1_dq_k+1
+          triplet_pos.push_back(T(n_dof * 2 * (n_step - 1) + 8 * (n_step - 1) + i, 
+                                  n_dof * (i+1) + j, 
+                                  dDistance_box_dq(i, j))); //dDistance_box_k+1_dq_k+1                                  
         }
         if (var_set == "velocity") {
           // Triplet for velocity
@@ -836,6 +885,10 @@ public:
           triplet_exforce.push_back(T(n_dof * (n_step - 1 + i) + j, 
                                     2 * n_step + i + 1,
                                     (-Minv * J_right_remapped.col(i))(j)));
+          // back
+          triplet_exforce.push_back(T(n_dof * (n_step - 1 + i) + j, 
+                                    3 * n_step + i + 1,
+                                    (-Minv * J_back_remapped.col(i))(j)));                                    
         }
       }
       if (var_set == "exforce") {
@@ -845,6 +898,8 @@ public:
                                   n_step + i + 1, d_slack(n_step - 1 + i)));
         triplet_exforce.push_back(T(n_dof * 2 * (n_step - 1) + 5 * (n_step - 1) + i, 
                                   2 * n_step + i + 1, d_slack(2 * (n_step - 1) + i)));
+        triplet_exforce.push_back(T(n_dof * 2 * (n_step - 1) + 7 * (n_step - 1) + i, 
+                                  3 * n_step + i + 1, d_slack(3 * (n_step - 1) + i)));                                  
       }
       if (var_set == "d_slack") {
         triplet_d_slack.push_back(T(n_dof * 2 * (n_step - 1) + i, i, -1));
@@ -859,6 +914,11 @@ public:
         triplet_d_slack.push_back(T(n_dof * 2 * (n_step - 1) + 5 * (n_step - 1) + i, 
                                 2 * (n_step - 1) + i, 
                                 exforce(2 * n_step + 1 + 1)));
+        triplet_d_slack.push_back(T(n_dof * 2 * (n_step - 1) + 6 * (n_step - 1) + i, 
+                                3 * (n_step - 1) + i, -1));
+        triplet_d_slack.push_back(T(n_dof * 2 * (n_step - 1) + 7 * (n_step - 1) + i, 
+                                3 * (n_step - 1) + i, 
+                                exforce(3 * n_step + 1 + 1)));                                
       }
       if (var_set == "df_slack") {
         triplet_df_slack.push_back(T(n_dof * 2 * (n_step - 1) + n_step - 1 + i, 
@@ -867,6 +927,8 @@ public:
                                 n_step - 1 + i, -1));
         triplet_df_slack.push_back(T(n_dof * 2 * (n_step - 1) + 5 * (n_step - 1) + i, 
                                 2 * (n_step - 1) + i, -1));
+        triplet_df_slack.push_back(T(n_dof * 2 * (n_step - 1) + 7 * (n_step - 1) + i, 
+                                3 * (n_step - 1) + i, -1));                                
      }
     } 
     if (var_set == "position") {
@@ -945,19 +1007,19 @@ public:
         switch (cost_func_type)
         {
         case 0:
-          for (int i = 0; i < 3 * (n_step - 1); i++)
+          for (int i = 0; i < 4 * (n_step - 1); i++)
           {
             triplet_slack.push_back(T(0, i, 1e4 * 2 * df_slack(i)));
           }
           break;
         case 1:
-          for (int i = 0; i < 3 * (n_step - 1); i++)
+          for (int i = 0; i < 4 * (n_step - 1); i++)
           {
             triplet_slack.push_back(T(0, i, 1e4));
           }
           break;
         case 2:
-          for (int i = 0; i < 3 * (n_step - 1); i++)
+          for (int i = 0; i < 4 * (n_step - 1); i++)
           {
             triplet_slack.push_back(T(0, i, 1e4 * df_slack(i) / df_slack.norm()));
           }
