@@ -179,7 +179,7 @@ target_compile_definitions(test_urdf PUBLIC ${PINOCCHIO_CFLAGS_OTHER})
 # )
 # target_compile_definitions(test_ur5 PRIVATE ${PINOCCHIO_CFLAGS_OTHER})
 
-# pusher test
+# IPOPT
 add_executable(ipopt_ur3 src/ipopt_ur3.cpp)
 add_dependencies(ipopt_ur3 ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 target_link_libraries(ipopt_ur3
@@ -191,7 +191,7 @@ target_link_libraries(ipopt_ur3
 )
 target_compile_definitions(ipopt_ur3 PRIVATE ${PINOCCHIO_CFLAGS_OTHER})
 
-# UR3
+# SNOPT
 add_executable(snopt_ur3 src/ur3_box.cpp)
 add_dependencies(snopt_ur3 ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 target_link_libraries(snopt_ur3
@@ -202,6 +202,18 @@ target_link_libraries(snopt_ur3
   yaml-cpp
 )
 target_compile_definitions(snopt_ur3 PRIVATE ${PINOCCHIO_CFLAGS_OTHER})
+
+# BT_IPOPT
+add_executable(bt_ipopt src/bt_ipopt.cpp)
+add_dependencies(bt_ipopt ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+target_link_libraries(bt_ipopt
+  ${Boost_LIBRARIES}
+  ${catkin_LIBRARIES}
+  ${PKG_HPP_FCL_LDFLAGS}
+  ${PINOCCHIO_LIBRARIES}
+  yaml-cpp
+)
+target_compile_definitions(bt_ipopt PRIVATE ${PINOCCHIO_CFLAGS_OTHER})
 
 #############
 ## Install ##

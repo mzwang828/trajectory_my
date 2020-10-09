@@ -193,7 +193,8 @@ int main(int argc, char ** argv)
   Eigen::VectorXd q = randomConfiguration(model);
   
   Eigen::VectorXd q_test(model.nq);
-  q_test << -0.05,-0.80,1.55,-0.96,1.57,-0.00, 0.50, 0.13, cos(0.1), sin(0.1);
+  double theta = 0.6;
+  q_test << -0.05,-0.80,1.55,-0.96,1.57,-0.00, 0.50, 0.13, cos(theta), sin(theta);
   pinocchio::computeJointJacobians(model, data, q_test);
   pinocchio::framesForwardKinematics(model, data, q_test);
   Eigen::Matrix3d ee_rotation, box_root_rotation;
@@ -246,4 +247,38 @@ int main(int argc, char ** argv)
   J_box.setZero();
   getFrameJacobian(model, data, model.getFrameId("box"), LOCAL_WORLD_ALIGNED, J_box);
   std::cout << "box jacobian:\n " << J_box << "\n";
+
+  pinocchio::SE3 root_joint_frame_placement = data.oMi[model.getJointId("box_root_joint")];
+  Eigen::Vector3d goal_global(0.53, 0.00, 0.00);
+  Eigen::Vector3d goal_local = (root_joint_frame_placement.inverse().act(goal_global));
+
+  std::cout << "goal local: " << goal_local.transpose() << "\n";
+
+  // numerical difference to get dDistance_dq
+  Eigen::MatrixXd dgoal_dx;
+  dgoal_dx.resize(9,3);
+  dgoal_dx.setZero();
+
+  double alpha = 1e-6;
+  Eigen::VectorXd pos_eps(model.nv);
+  pos_eps << -0.05,-0.80,1.55,-0.96,1.57,-0.00, 0.50, 0.13, theta;
+  for(int k = 0; k < model.nv; ++k)
+  {
+    pos_eps[k] += alpha;
+    Eigen::VectorXd q_eps(model.nq);
+    q_eps.segment(0, 8) = pos_eps.segment(0, 8);
+    q_eps(model.nq - 2) = cos(pos_eps(9 - 1));
+    q_eps(model.nq - 1) = sin(pos_eps(9 - 1));
+
+    pinocchio::framesForwardKinematics(model, data, q_eps);
+    root_joint_frame_placement = data.oMi[model.getJointId("box_root_joint")];
+    Eigen::Vector3d goal_local_plus = (root_joint_frame_placement.inverse().act(goal_global));
+    // std::cout << "goal plus : " << goal_local_plus.transpose() << "\n";
+    dgoal_dx.row(k) = (goal_local_plus - goal_local) / alpha;
+  
+    pos_eps[k] -= alpha;
+  }
+
+  std::cout << "dgoal_dx : \n" << dgoal_dx << "\n";
+
 }

@@ -104,7 +104,7 @@ public:
     }
   }
 
-  ExVariables(int n, const std::string &name, Eigen::VectorXd& init_values) : VariableSet(n, name) {
+  ExVariables(int n, const std::string &name, Eigen::VectorXd &init_values) : VariableSet(n, name) {
     YAML::Node params = YAML::LoadFile(
         "/home/mzwang/catkin_ws/src/trajectory_my/Config/params.yaml");
     n_dof = params["n_dof"].as<int>();
@@ -117,6 +117,41 @@ public:
     xvar = Eigen::VectorXd::Zero(n);
     // the initial values where the NLP starts iterating from
     xvar = init_values;
+  }
+
+  ExVariables(int n, const std::string &name, std::vector<double> &goal_in) : VariableSet(n, name) {
+    YAML::Node params = YAML::LoadFile(
+        "/home/mzwang/catkin_ws/src/trajectory_my/Config/params.yaml");
+    n_dof = params["n_dof"].as<int>();
+    n_control = params["n_control"].as<int>();
+    n_exforce = params["n_exforce"].as<int>();
+    n_step = params["n_step"].as<int>();
+    t_step = params["t_step"].as<double>();
+    goal = goal_in;
+
+    xvar = Eigen::VectorXd::Zero(n);
+    // the initial values where the NLP starts iterating from
+    if (name == "position") {
+      for (int i = 0; i < n; i++)
+        xvar(i) = 0.3;
+    } else if (name == "velocity") {
+      for (int i = 0; i < n; i++)
+        xvar(i) = 0.0;
+    } else if (name == "effort") {
+      for (int i = 0; i < n; i++)
+        xvar(i) = 0;
+    } else if (name == "exforce") {
+      for (int i = 0; i < n; i++)
+        xvar(i) = 0;
+    } else if (name == "d_slack") {
+      for (int i = 0; i < n; i++) {
+        xvar(i) = 1e-2;
+      }
+    } else if (name == "df_slack") {
+      for (int i = 0; i < n; i++) {
+        xvar(i) = 1e-2;
+      }
+    }
   }
 
   // Here is where you can transform the Eigen::Vector into whatever
@@ -144,7 +179,7 @@ public:
       bounds.at(4) = Bounds(1.57, 1.57);
       bounds.at(5) = Bounds(0, 0);
       bounds.at(6) = Bounds(0.49, 0.49);
-      bounds.at(7) = Bounds(0.131073, 0.131073);
+      bounds.at(7) = Bounds(0.0, 0.0);
       bounds.at(8) = Bounds(0, 0);
 
       bounds.at(GetRows() - 3) = Bounds(goal[0], goal[0]);
@@ -209,7 +244,7 @@ public:
                         object_leftId, object_rightId;
   Eigen::Vector3d front_normal, back_normal, left_normal, right_normal; // normal vector point to the front plane
   Eigen::Vector3d robot_contact_normal;
-  Eigen::Vector3d goal_v3d;
+  Eigen::Vector3d goal_v3d; // 3d vector goal in world frame
   mutable Eigen::MatrixXd J_front_remapped,
                           J_back_remapped,
                           J_left_remapped,
@@ -218,6 +253,7 @@ public:
   mutable Eigen::MatrixXd dDistance_box_dq, dDistance_front_dq, dDistance_back_dq,
                           dDistance_left_dq, dDistance_right_dq; // numerical gradients for distance
   mutable Eigen::MatrixXd goal_local; // goal in box local frame
+  Eigen::Vector3d goal_local_temp; // temporary fake local goal
 
   // Input Mapping & Friction
   Eigen::MatrixXd B, f;
@@ -230,6 +266,22 @@ public:
   std::vector<double> goal;     // goal
 
   ExConstraint(int n) : ExConstraint(n, "constraint1") {}
+  ExConstraint(int n, std::vector<double> &goal_in) : ExConstraint(n, "constraint1"){
+    goal_v3d << goal_in[0], goal_in[1], 0;
+    // temp
+    if (goal_in[1] > 0)
+    {
+      goal_local_temp << 1.0, 1.0, 0.0;
+    }
+    else if (goal_in[1] < 0)
+    {
+      goal_local_temp << 1.0, -1.0, 0.0;
+    }
+    else
+    {
+      goal_local_temp << 1.0, 0.0, 0.0;
+    }
+  }
   ExConstraint(int n, const std::string &name) : ConstraintSet(n, name) {
     // build the pusher model
     pinocchio::urdf::buildModel(robot_filename, robot_model);
@@ -284,6 +336,9 @@ public:
     t_step = params["t_step"].as<double>();
     constraint_type = params["constraint_type"].as<int>();
     goal = params["box_goal"].as<std::vector<double>>();
+    
+    //temp
+    goal_local_temp << 1.0, -1.0, 0.0;
 
     front_normal << 1, 0, 0;
     back_normal << -1, 0, 0;
@@ -525,8 +580,8 @@ public:
       model.frames[object_rightId].placement.translation() = right_r_j2c;
       model.frames[object_backId].placement.translation() = back_r_j2c;
 
-      // goal_local.col(i) = root_joint_frame_placement.inverse().act(goal_v3d);
-      goal_local.col(i) << 1.0, -1.0, 0.0;
+      // goal_local.col(i) = root_joint_frame_placement.inverse().act(goal_v3d).normalized();
+      goal_local.col(i) = goal_local_temp;
 
       pinocchio::computeJointJacobians(model, data_next, q_next);
       pinocchio::framesForwardKinematics(model, data_next, q_next);

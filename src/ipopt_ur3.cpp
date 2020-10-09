@@ -90,7 +90,7 @@ int main()
   nlp.AddConstraintSet(std::make_shared<ExConstraint>(2*ndof*(nsteps-1)+13*(nsteps-1)));
   nlp.AddCostSet      (std::make_shared<ExCost>());
   nlp.PrintCurrent();
-
+  
   IpoptSolver solver;
   solver.SetOption("linear_solver", "mumps");
   solver.SetOption("jacobian_approximation", "exact");
