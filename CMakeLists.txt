@@ -170,14 +170,16 @@ link_directories(${PINOCCHIO_LIBRARY_DIRS})
 target_compile_definitions(test_urdf PUBLIC ${PINOCCHIO_CFLAGS_OTHER})
 
 # ur5 test
-# add_executable(test_ur5 src/test_ur5.cpp)
-# add_dependencies(test_ur5 ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-# target_link_libraries(test_ur5
-#   ${Boost_LIBRARIES}
-#   ${catkin_LIBRARIES}
-#   #${PINOCCHIO_LIBRARIES}
-# )
-# target_compile_definitions(test_ur5 PRIVATE ${PINOCCHIO_CFLAGS_OTHER})
+add_executable(bt_ipopt src/bt_ipopt.cpp)
+add_dependencies(bt_ipopt ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+target_link_libraries(bt_ipopt
+  ${Boost_LIBRARIES}
+  ${catkin_LIBRARIES}
+  ${PKG_HPP_FCL_LDFLAGS}
+  ${PINOCCHIO_LIBRARIES}
+  yaml-cpp
+)
+target_compile_definitions(bt_ipopt PRIVATE ${PINOCCHIO_CFLAGS_OTHER})
 
 # pusher test
 add_executable(ipopt_ur3 src/ipopt_ur3.cpp)

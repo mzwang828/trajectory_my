@@ -119,6 +119,41 @@ public:
     xvar = init_values;
   }
 
+  ExVariables(int n, const std::string &name, std::vector<double> &goal_in) : VariableSet(n, name) {
+    YAML::Node params = YAML::LoadFile(
+        "/home/mzwang/catkin_ws/src/trajectory_my/Config/params.yaml");
+    n_dof = params["n_dof"].as<int>();
+    n_control = params["n_control"].as<int>();
+    n_exforce = params["n_exforce"].as<int>();
+    n_step = params["n_step"].as<int>();
+    t_step = params["t_step"].as<double>();
+    goal = goal_in;
+
+    xvar = Eigen::VectorXd::Zero(n);
+    // the initial values where the NLP starts iterating from
+    if (name == "position") {
+      for (int i = 0; i < n; i++)
+        xvar(i) = 0.3;
+    } else if (name == "velocity") {
+      for (int i = 0; i < n; i++)
+        xvar(i) = 0.0;
+    } else if (name == "effort") {
+      for (int i = 0; i < n; i++)
+        xvar(i) = 0;
+    } else if (name == "exforce") {
+      for (int i = 0; i < n; i++)
+        xvar(i) = 0;
+    } else if (name == "d_slack") {
+      for (int i = 0; i < n; i++) {
+        xvar(i) = 1e-2;
+      }
+    } else if (name == "df_slack") {
+      for (int i = 0; i < n; i++) {
+        xvar(i) = 1e-2;
+      }
+    }
+  }
+
   // Here is where you can transform the Eigen::Vector into whatever
   // internal representation of your variables you have (here two doubles, but
   // can also be complex classes such as splines, etc..
@@ -144,7 +179,7 @@ public:
       bounds.at(4) = Bounds(1.57, 1.57);
       bounds.at(5) = Bounds(0, 0);
       bounds.at(6) = Bounds(0.49, 0.49);
-      bounds.at(7) = Bounds(0.131073, 0.131073);
+      bounds.at(7) = Bounds(0.0, 0.0);
       bounds.at(8) = Bounds(0, 0);
 
       bounds.at(GetRows() - 3) = Bounds(goal[0], goal[0]);
@@ -209,7 +244,6 @@ public:
                         object_leftId, object_rightId;
   Eigen::Vector3d front_normal, back_normal, left_normal, right_normal; // normal vector point to the front plane
   Eigen::Vector3d robot_contact_normal;
-  Eigen::Vector3d goal_v3d;
   mutable Eigen::MatrixXd J_front_remapped,
                           J_back_remapped,
                           J_left_remapped,
@@ -225,7 +259,6 @@ public:
   int n_step;                   // number of steps or (knot points - 1)
   double t_step;                // length of each step
   int constraint_type;          // constraint type
-  std::vector<double> goal;     // goal
 
   ExConstraint(int n) : ExConstraint(n, "constraint1") {}
   ExConstraint(int n, const std::string &name) : ConstraintSet(n, name) {
@@ -281,14 +314,12 @@ public:
     n_step = params["n_step"].as<int>();
     t_step = params["t_step"].as<double>();
     constraint_type = params["constraint_type"].as<int>();
-    goal = params["box_goal"].as<std::vector<double>>();
 
     front_normal << 1, 0, 0;
     back_normal << -1, 0, 0;
     left_normal << 0, -1, 0;
     right_normal << 0, 1, 0;
     robot_contact_normal << 0, -1, 0;
-    goal_v3d << goal[0], goal[1], 0;
     
     J_front_remapped.resize(n_dof, n_step - 1);
     J_front_remapped.setZero();
@@ -519,7 +550,6 @@ public:
       model.frames[object_rightId].placement.translation() = right_r_j2c;
       model.frames[object_backId].placement.translation() = back_r_j2c;
 
-      Eigen::Vector3d goal_local = root_joint_frame_placement.inverse().act(goal_v3d);
 
       pinocchio::computeJointJacobians(model, data_next, q_next);
       pinocchio::framesForwardKinematics(model, data_next, q_next);
