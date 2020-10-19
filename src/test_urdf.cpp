@@ -22,7 +22,6 @@
 #include "pinocchio/algorithm/geometry.hpp"
 #include <pinocchio/algorithm/model.hpp>
 #include "pinocchio/algorithm/jacobian.hpp"
-#include "pinocchio/algorithm/joint-configuration.hpp"
 #include "pinocchio/spatial/act-on-set.hpp"
 
 
@@ -245,9 +244,11 @@ int main(int argc, char ** argv)
   std::cout << "distance front: " << distance_front << "\n";
   std::cout << "nearest point: " << distRes.nearest_points[0].transpose() << ", " << distRes.nearest_points[1].transpose() << "\n";
 
-  Eigen::VectorXd q_test(model.nq);
-  q_test << 0,0,0,0,0.1,1.5001, 1.0, 0.5, cos(0.0), sin(0.0);
+  Eigen::VectorXd q_test(model.nq), v_test(model.nv);
+  q_test << 0,0,0,0,0.1,1.5001, 1.0, 0.5, cos(1.57), sin(1.57);
+  v_test << 0,0,0,0,0,0,0,0,1;
   pinocchio::framesForwardKinematics(model, data, q_test);
+  pinocchio::forwardKinematics(model, data, q, v_test);
   ee_rotation = data.oMf[model.getFrameId("ee_link")].rotation();
   ee_translation = data.oMf[model.getFrameId("ee_link")].translation();
   box_front_rotation = data.oMf[model.getFrameId("obj_front")].rotation();
@@ -270,40 +271,17 @@ int main(int argc, char ** argv)
   std::cout << "distance box: " << distance_box_plus << "\n";
   std::cout << "distance front: " << distance_front_plus << "\n";
 
-  double alpha = 1e-8;
-  Eigen::VectorXd pos_eps(model.nv), dDistance_box_dq(model.nv), dDistance_front_dq((model.nv));
-  pos_eps.head(8) = q.head(8);
-  pos_eps[8] = 0.0;
-  for(int k = 0; k < model.nv; ++k)
-  {
-    pos_eps[k] += alpha;
-    Eigen::VectorXd q_eps(model.nq);
-    q_eps.segment(0, 9-1) = pos_eps.segment(0, 9 - 1);
-    q_eps(model.nq - 2) = cos(pos_eps(9 - 1));
-    q_eps(model.nq - 1) = sin(pos_eps(9 - 1));
-    pinocchio::framesForwardKinematics(model, data, q_eps);
-    ee_rotation = data.oMf[model.getFrameId("ee_link")].rotation();
-    ee_translation = data.oMf[model.getFrameId("ee_link")].translation();
-    box_front_rotation = data.oMf[model.getFrameId("obj_front")].rotation();
-    box_front_translation = data.oMf[model.getFrameId("obj_front")].translation();
-    box_root_rotation = data.oMf[model.getFrameId("box")].rotation();
-    box_root_translation = data.oMf[model.getFrameId("box")].translation();
-    fcl_ee.setTransform(ee_rotation, ee_translation); 
-    fcl_box.setTransform(box_root_rotation, box_root_translation);
-    fcl_box_front.setTransform(box_front_rotation, box_front_translation);
-    distRes.clear();
-    hpp::fcl::distance(&fcl_ee, &fcl_box, distReq, distRes);
-    double distance_box_plus = distRes.min_distance;
-    distRes.clear();
-    hpp::fcl::distance(&fcl_ee, &fcl_box_front, distReq, distRes);
-    double distance_front_plus = distRes.min_distance;
-    dDistance_box_dq(k) = (distance_box_plus - distance_box) / alpha;
-    dDistance_front_dq(k) = (distance_front_plus - distance_front) / alpha;
-  
-    pos_eps[k] -= alpha;
-  }
+  std::cout << "---------------\n";
+  pinocchio::Motion v_front = getFrameVelocity(model, data, model.getFrameId("obj_front"), pinocchio::LOCAL);
+  pinocchio::Motion v_center = getFrameVelocity(model, data, model.getFrameId("box"), pinocchio::LOCAL);
+  std::cout << "v_front: " << v_front.toVector().transpose().head(3) << "\n";
+  std::cout << "v_center: " << v_center.toVector().transpose() << "\n";
 
-  std::cout<< "dDistance_box_dq: " << dDistance_box_dq.transpose() << "\n";
-  std::cout<< "dDistance_front_dq: " << dDistance_front_dq.transpose() << "\n";
+  pinocchio::SE3 root_joint_frame_placement =
+          data.oMf[model.getFrameId("box")];
+  Eigen::Vector3d test_normal(0,1,0);
+  Eigen::Vector3d test_transed = box_root_rotation * test_normal;
+
+  std::cout << "vec world: " << test_transed.transpose() << "\n";
 
 }

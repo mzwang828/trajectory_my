@@ -37,6 +37,7 @@ int main()
     nlp.AddVariableSet  (std::make_shared<ExVariables>(n_control*nsteps, "effort"));
     nlp.AddVariableSet  (std::make_shared<ExVariables>(n_exforce*nsteps, "exforce"));
     nlp.AddVariableSet  (std::make_shared<ExVariables>(2*(nsteps-1), "slack"));
+    nlp.AddVariableSet  (std::make_shared<ExVariables>(n_exforce*nsteps, "friction"));
   } else {
     std::cout << "Found trajectory from previous iteration.\n";
     std::string line;
@@ -78,13 +79,13 @@ int main()
     nlp.AddVariableSet  (std::make_shared<ExVariables>(1*(nsteps-1), "slack", slack_init));
   }
 
-  nlp.AddConstraintSet(std::make_shared<ExConstraint>(2*ndof*(nsteps-1)+3*(nsteps-1)));
+  nlp.AddConstraintSet(std::make_shared<ExConstraint>(2*ndof*(nsteps-1)+7*(nsteps-1)));
   nlp.AddCostSet      (std::make_shared<ExCost>());
   nlp.PrintCurrent();
 
   IpoptSolver solver;
   solver.SetOption("linear_solver", "mumps");
-  solver.SetOption("jacobian_approximation", "exact");
+  solver.SetOption("jacobian_approximation", "finite-difference-values");
   solver.SetOption("max_cpu_time", 1e6);
   solver.SetOption("max_iter", 30000);
   solver.Solve(nlp);

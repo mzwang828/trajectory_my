@@ -15,5 +15,5 @@ n_step: 20
 t_step: 0.05
 n_control: 6
 n_exforce: 1
-box_goal_x: 0.63
+box_goal_x: 0.3
 cost_func_type: 1 # 0 -> SquaredNorm, 1 -> L1, 2 -> L2

@@ -59,29 +59,6 @@ public:
     xvar = Eigen::VectorXd::Zero(n);
     // the initial values where the NLP starts iterating from
     if (name == "position") {
-      // for (int i = 0; i < n_step/2; i++){
-      //   xvar(i*n_dof) =  0;
-      //   xvar(i*n_dof+1) = -1.0 + i * (0.42*2/n_step);
-      //   xvar(i*n_dof+2) = 1.86 - i * (0.43*2/n_step);
-      //   xvar(i*n_dof+3) = -0.8 - i * (0.3*2/n_step);
-      //   xvar(i*n_dof+4) = 1.57;
-      //   xvar(i*n_dof+5) = 0;
-      //   xvar(i*n_dof+6) = 0.49;
-      //   xvar(i*n_dof+7) = 0.131073;
-      //   xvar(i*n_dof+8) = 0;
-      // }
-      // for (int i = n_step/2; i < n_step; i++){
-
-      //   xvar(i*n_dof) =  0;
-      //   xvar(i*n_dof+1) = -0.58;
-      //   xvar(i*n_dof+2) = 1.43;
-      //   xvar(i*n_dof+3) = -0.83;
-      //   xvar(i*n_dof+4) = 1.57;
-      //   xvar(i*n_dof+5) = 0;
-      //   xvar(i*n_dof+6) = 0.49 + (i - n_step/2) * (0.14*2/n_step);
-      //   xvar(i*n_dof+7) = 0.131073;
-      //   xvar(i*n_dof+8) = 0;
-      // }
       for (int i = 0; i < n; i++)
         xvar(i) = 0.3;
     } else if (name == "velocity") {
@@ -96,6 +73,10 @@ public:
     } else if (name == "slack") {
       for (int i = 0; i < n; i++) {
         xvar(i) = 1e-2;
+      }
+    } else if (name == "friction") {
+      for (int i = 0; i < n; i++) {
+        xvar(i) = 0;
       }
     }
   }
@@ -143,7 +124,7 @@ public:
       bounds.at(7) = Bounds(0.131073, 0.131073);
       bounds.at(8) = Bounds(0, 0);
 
-      bounds.at(GetRows() - 3) = Bounds(goal_x, goal_x);
+      bounds.at(GetRows() - 1) = Bounds(goal_x, goal_x);
       // bounds.at(GetRows() - 2) = Bounds(0.3, 0.3);
     } else if (GetName() == "velocity") {
       for (int i = 0; i < GetRows(); i++)
@@ -163,12 +144,15 @@ public:
       }
     } else if (GetName() == "exforce") {
       for (int i = 0; i < GetRows(); i++)
-        bounds.at(i) = Bounds(0, force_lim); // NOTE
+        bounds.at(i) = Bounds(0, force_lim);
     } else if (GetName() == "slack") {
       for (int i = 0; i < GetRows()/2; i++) {
         bounds.at(i) = Bounds(0, inf);                        // distance 
-        bounds.at(GetRows()/2 + i) = Bounds(0, 1e-2);                       // phi*gamma < slack
+        bounds.at(GetRows()/2 + i) = Bounds(0, 1e-2);         // phi*gamma < slack
       }
+    } else if (GetName() == "friction") {
+      for (int i = 0; i < GetRows(); i++)
+        bounds.at(i) = Bounds(-inf, inf);
     }
     return bounds;
   }
@@ -201,10 +185,12 @@ public:
   pinocchio::FrameIndex contactId, object_contactId;
   Eigen::Vector3d front_normal; // normal vector point to the front plane
   Eigen::Vector3d robot_contact_normal;
-  mutable Eigen::VectorXd distance_cache; 
+  Eigen::Vector3d friction_normal;
   mutable Eigen::MatrixXd J_remapped; // used to save calculated Jacobians for exforce
   mutable Eigen::MatrixXd fext_robot, fext_object; // used to save fext values for each joint
   mutable Eigen::MatrixXd dDistance_box_dq, dDistance_front_dq; // numerical gradients for distance
+  mutable Eigen::MatrixXd dpsi_dq, dpsi_dv; // numerical gradients for psi
+  double mu;
   // Input Mapping & Friction
   Eigen::MatrixXd B, f;
   int n_dof;                    // number of freedom
@@ -217,6 +203,8 @@ public:
   ExConstraint(int n, const std::string &name) : ConstraintSet(n, name) {
     front_normal << 1, 0, 0;
     robot_contact_normal << 0, -1, 0;
+    friction_normal << 0, 1, 0;
+    mu = 0.6;
     // build the pusher model
     pinocchio::urdf::buildModel(robot_filename, robot_model);
     // build the box model
@@ -274,15 +262,17 @@ public:
     f.setZero();
     f(6, 0) = 1.0;
     f(7, 1) = 1.0;
-    f(8, 2) = 0.08;
-
-    distance_cache.resize(n_step);
-    distance_cache.setZero();
+    f(8, 2) = 1.0;
 
     dDistance_box_dq.resize(n_step, n_dof);
     dDistance_box_dq.setZero();
     dDistance_front_dq.resize(n_step, n_dof);
     dDistance_front_dq.setZero();
+
+    dpsi_dq.resize(n_step, n_dof);
+    dpsi_dq.setZero();
+    dpsi_dv.resize(n_step, n_dof);
+    dpsi_dv.setZero();
   }
 
   void setRootJointBounds(pinocchio::Model &model,
@@ -308,6 +298,7 @@ public:
     VectorXd effort = GetVariables()->GetComponent("effort")->GetValues();
     VectorXd exforce = GetVariables()->GetComponent("exforce")->GetValues();
     VectorXd slack = GetVariables()->GetComponent("slack")->GetValues();
+    VectorXd friction = GetVariables()->GetComponent("friction")->GetValues();
     // set contraint for each knot point
     // constraints shape
     /////////////////////////////////////////*  *////////
@@ -352,7 +343,7 @@ public:
       boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_box_front_geom (new hpp::fcl::Box (0.00010,0.08,0.08));
 
       // boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_ee_geom (new hpp::fcl::Sphere (0.005));
-      // boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_box_front_geom (new hpp::fcl::Sphere (0.05));
+      // boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_box_front_geom (new hpp::fcl::Sphere (0.005));
 
       hpp::fcl::CollisionObject fcl_box(fcl_box_geom, box_root_rotation, box_root_translation);
       hpp::fcl::CollisionObject fcl_ee(fcl_ee_geom, ee_rotation, ee_translation);
@@ -408,8 +399,6 @@ public:
         pos_eps[k] -= alpha;
       }
 
-
-
       // Update the contact point frame
       // pinocchio::computeCollisions(model, data_next, geom_model, geom_data,
       //                              q_next);
@@ -434,6 +423,19 @@ public:
       Eigen::Vector3d object_r_j2c(-0.05, 0, 0);
       model.frames[contactId].placement.translation() = robot_r_j2c;
       model.frames[object_contactId].placement.translation() = object_r_j2c;
+
+      // Get relative tangential velocity psi
+      pinocchio::forwardKinematics(model, data_next, q_next, vel.segment(n_dof * (i + 1), n_dof));
+      pinocchio::Motion v_EE = getFrameVelocity(model, data_next, contactId, pinocchio::LOCAL);
+      pinocchio::Motion v_front = getFrameVelocity(model, data_next, object_contactId, pinocchio::LOCAL);
+      // convert EE velocity from EE frame to object frame
+      Eigen::Vector3d v_EE_linear = v_EE.toVector().head(3);
+      Eigen::Vector3d v_EE_oframe = box_root_rotation.inverse() * ee_rotation * v_EE_linear;
+
+      Eigen::Vector3d v_diff = v_EE_oframe - v_front.toVector().head(3);
+      double psi = v_diff(1);
+
+      Eigen::Vector3d robot_friction_normal = ee_rotation.inverse() * box_root_rotation * friction_normal;
       
       pinocchio::computeJointJacobians(model, data_next, q_next);
       pinocchio::framesForwardKinematics(model, data_next, q_next);
@@ -462,18 +464,20 @@ public:
 
       // Get external force in local joint frame
       Eigen::VectorXd force_cp(3), force_ocp(3);
+      force_cp.setZero();
+      force_ocp.setZero();
       // contact force in [wrist_3_joint] frame at [contact] point
       // force_cp = -(data_next.oMi[model.getJointId("wrist_1_joint")].rotation().transpose() *
       //              front_normal_world * exforce(i + 1));
-      force_cp = robot_contact_normal * exforce(i+1);
+      //force_cp = robot_contact_normal * exforce(i+1);// - robot_friction_normal * friction(i+1);
       // Get force and moment at [joint_origin] point
       fext_robot.col(i).head(3) = force_cp;
       fext_robot.col(i)(3) = -robot_r_j2c(2) * force_cp(1) + robot_r_j2c(1) * force_cp(2);
       fext_robot.col(i)(4) = robot_r_j2c(2) * force_cp(0) - robot_r_j2c(0) * force_cp(2);
       fext_robot.col(i)(5) = -robot_r_j2c(1) * force_cp(0) + robot_r_j2c(0) * force_cp(1);
       // contact force in [object] frame at [contact] point
-      force_ocp = front_normal * exforce(i+1);
-      fext_object.col(i).head(3) = force_ocp;
+      force_ocp = friction_normal * friction(i+1);
+      fext_object.col(i).head(3).setZero();
       fext_object.col(i)(3) = -object_r_j2c(2) * force_ocp(1) + object_r_j2c(1) * force_ocp(2);
       fext_object.col(i)(4) = object_r_j2c(2) * force_ocp(0) - object_r_j2c(0) * force_ocp(2);
       fext_object.col(i)(5) = -object_r_j2c(1) * force_ocp(0) + object_r_j2c(0) * force_ocp(1);
@@ -497,6 +501,8 @@ public:
       pinocchio::MotionTpl<double, 0> box_acceleration = pinocchio::getClassicalAcceleration(model, data_next, 7, pinocchio::LOCAL);
       a_classical(model.nv - 3) = box_acceleration.linear()(0);
       a_classical(model.nv - 2) = box_acceleration.linear()(1);
+      // a_classical(model.nv - 3) = 0.0;
+      // a_classical(model.nv - 2) = 0.0;
       a_classical(model.nv - 1) = box_acceleration.angular()(2);
       //////////////////////////////////////////////////////////////////////////
       
@@ -538,17 +544,20 @@ public:
       g(n_dof * 2 * (n_step - 1) + i) = distance_front - slack(i);
       g(n_dof * 2 * (n_step - 1) + n_step - 1 + i) =
           exforce(i + 1) * slack(i) - slack(n_step - 1 + i);
-      // state-trigger
-      // g(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i) =
-      //    -std::min(-slack(i), 0.0) * slack(n_step - 1 + i);
-      // complimentray
-      // g(n_dof * 2 * (n_step - 1) + 1 * (n_step - 1) + i) =
-      //     slack(i) * exforce(i + 1) - slack(n_step - 1 + i);
 
       g(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i) =
           distance_box;
 
-      distance_cache(i) = distance_front;
+      // robot-box friction
+      g(n_dof * 2 * (n_step - 1) + 3 * (n_step - 1) + i) =
+          friction(i + 1) + mu * exforce(i + 1);
+      g(n_dof * 2 * (n_step - 1) + 4 * (n_step - 1) + i) =
+          - friction(i + 1) + mu * exforce(i + 1);
+      g(n_dof * 2 * (n_step - 1) + 5 * (n_step - 1) + i) =
+          - std::min(-psi, 0.0) * (friction(i+1) - mu*exforce(i+1));
+      g(n_dof * 2 * (n_step - 1) + 6 * (n_step - 1) + i) =
+          - std::min(psi, 0.0) * (friction(i+1) + mu*exforce(i+1));    
+
     }
     return g;
   };
@@ -564,6 +573,14 @@ public:
       bounds.at(n_dof * 2 * (n_step - 1) + n_step - 1 + i) = Bounds(-inf, 0);
       bounds.at(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i) =
           Bounds(0, inf);
+      bounds.at(n_dof * 2 * (n_step - 1) + 3 * (n_step - 1) + i) = 
+          Bounds(0.0, inf);
+      bounds.at(n_dof * 2 * (n_step - 1) + 4 * (n_step - 1) + i) = 
+          Bounds(0.0, inf);
+      bounds.at(n_dof * 2 * (n_step - 1) + 5 * (n_step - 1) + i) = 
+          Bounds(0.0, 0.0);
+      bounds.at(n_dof * 2 * (n_step - 1) + 6 * (n_step - 1) + i) = 
+          Bounds(0.0, 0.0);
     }
     return bounds;
   }
