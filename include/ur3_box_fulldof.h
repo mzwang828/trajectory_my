@@ -76,7 +76,7 @@ public:
       }
     } else if (name == "friction") {
       for (int i = 0; i < n; i++) {
-        xvar(i) = 0;
+        xvar(i) = 1.0;
       }
     }
   }
@@ -187,9 +187,11 @@ public:
   Eigen::Vector3d robot_contact_normal;
   Eigen::Vector3d friction_normal;
   mutable Eigen::MatrixXd J_remapped; // used to save calculated Jacobians for exforce
+  mutable Eigen::MatrixXd J_friction_remapped;
   mutable Eigen::MatrixXd fext_robot, fext_object; // used to save fext values for each joint
   mutable Eigen::MatrixXd dDistance_box_dq, dDistance_front_dq; // numerical gradients for distance
   mutable Eigen::MatrixXd dpsi_dq, dpsi_dv; // numerical gradients for psi
+  mutable Eigen::VectorXd psi;
   double mu;
   // Input Mapping & Friction
   Eigen::MatrixXd B, f;
@@ -273,6 +275,11 @@ public:
     dpsi_dq.setZero();
     dpsi_dv.resize(n_step, n_dof);
     dpsi_dv.setZero();
+    psi.resize(n_step);
+    psi.setZero();
+
+    J_friction_remapped.resize(n_dof, n_step - 1);
+    J_friction_remapped.setZero();
   }
 
   void setRootJointBounds(pinocchio::Model &model,
@@ -326,7 +333,6 @@ public:
       q_next(model.nq - 1) = sin(pos(n_dof * (i + 1) + n_dof - 1));
 
       // calculate signed distance
-      // pinocchio::framesForwardKinematics(model, data, q);
       pinocchio::framesForwardKinematics(model, data, q_next);
       Eigen::Matrix3d ee_rotation, box_front_rotation, box_root_rotation;
       Eigen::Vector3d ee_translation, box_front_translation, box_root_translation;
@@ -365,6 +371,18 @@ public:
       Eigen::Vector3d contact_point_ee = distRes.nearest_points[0];
       Eigen::Vector3d contact_point_front = distRes.nearest_points[1];
 
+      // Get relative tangential velocity psi
+      pinocchio::forwardKinematics(model, data_next, q_next, vel.segment(n_dof * (i + 1), n_dof));
+      pinocchio::Motion v_EE = getFrameVelocity(model, data_next, contactId, pinocchio::LOCAL);
+      pinocchio::Motion v_front = getFrameVelocity(model, data_next, object_contactId, pinocchio::LOCAL);
+      // convert EE velocity from EE frame to object frame
+      Eigen::Vector3d v_EE_linear = v_EE.toVector().head(3);
+      Eigen::Vector3d v_EE_oframe = box_root_rotation.inverse() * ee_rotation * v_EE_linear;
+
+      Eigen::Vector3d v_diff = v_EE_oframe - v_front.toVector().head(3);
+      psi(i+1) = v_diff(1);
+      Eigen::Vector3d robot_friction_normal = ee_rotation.inverse() * box_root_rotation * friction_normal; 
+
       // numerical difference to get dDistance_dq
       double alpha = 1e-6;
       Eigen::VectorXd pos_eps(model.nv);
@@ -399,6 +417,54 @@ public:
         pos_eps[k] -= alpha;
       }
 
+      // numerical difference to get dpsi_dq
+      pos_eps = pos.segment(n_dof * (i+1) , n_dof);
+      Eigen::VectorXd vel_eps = vel.segment(n_dof * (i + 1), n_dof);
+      for(int k = 0; k < model.nv; ++k)
+      {
+        pos_eps[k] += alpha;
+        Eigen::VectorXd q_eps(model.nq);
+        q_eps.segment(0, n_dof-1) = pos_eps.segment(0, n_dof - 1);
+        q_eps(model.nq - 2) = cos(pos_eps(n_dof - 1));
+        q_eps(model.nq - 1) = sin(pos_eps(n_dof - 1));
+
+        pinocchio::forwardKinematics(model, data, q_eps, vel_eps);
+        pinocchio::updateFramePlacements(model, data);
+        ee_rotation = data.oMf[model.getFrameId("ee_link")].rotation();
+        box_root_rotation = data.oMf[model.getFrameId("box")].rotation();
+        v_EE = getFrameVelocity(model, data, contactId, pinocchio::LOCAL);
+        v_front = getFrameVelocity(model, data, object_contactId, pinocchio::LOCAL);
+        v_EE_linear = v_EE.toVector().head(3);
+        v_EE_oframe = box_root_rotation.inverse() * ee_rotation * v_EE_linear;
+
+        v_diff = v_EE_oframe - v_front.toVector().head(3);
+        double psi_plus = v_diff(1);
+        dpsi_dq(i+1, k) = (psi_plus - psi(i+1)) / alpha;
+      
+        pos_eps[k] -= alpha;
+      }   
+      
+      // numerical difference to get dpsi_dv
+      for(int k = 0; k < model.nv; ++k)
+      {
+        vel_eps[k] += alpha;
+
+        pinocchio::forwardKinematics(model, data, q_next, vel_eps);
+        pinocchio::updateFramePlacements(model, data);
+        ee_rotation = data.oMf[model.getFrameId("ee_link")].rotation();
+        box_root_rotation = data.oMf[model.getFrameId("box")].rotation();
+        v_EE = getFrameVelocity(model, data, contactId, pinocchio::LOCAL);
+        v_front = getFrameVelocity(model, data, object_contactId, pinocchio::LOCAL);
+        v_EE_linear = v_EE.toVector().head(3);
+        v_EE_oframe = box_root_rotation.inverse() * ee_rotation * v_EE_linear;
+
+        v_diff = v_EE_oframe - v_front.toVector().head(3);
+        double psi_plus = v_diff(1);
+        dpsi_dv(i+1, k) = (psi_plus - psi(i+1)) / alpha;
+      
+        vel_eps[k] -= alpha;
+      }
+
       // Update the contact point frame
       // pinocchio::computeCollisions(model, data_next, geom_model, geom_data,
       //                              q_next);
@@ -424,19 +490,6 @@ public:
       model.frames[contactId].placement.translation() = robot_r_j2c;
       model.frames[object_contactId].placement.translation() = object_r_j2c;
 
-      // Get relative tangential velocity psi
-      pinocchio::forwardKinematics(model, data_next, q_next, vel.segment(n_dof * (i + 1), n_dof));
-      pinocchio::Motion v_EE = getFrameVelocity(model, data_next, contactId, pinocchio::LOCAL);
-      pinocchio::Motion v_front = getFrameVelocity(model, data_next, object_contactId, pinocchio::LOCAL);
-      // convert EE velocity from EE frame to object frame
-      Eigen::Vector3d v_EE_linear = v_EE.toVector().head(3);
-      Eigen::Vector3d v_EE_oframe = box_root_rotation.inverse() * ee_rotation * v_EE_linear;
-
-      Eigen::Vector3d v_diff = v_EE_oframe - v_front.toVector().head(3);
-      double psi = v_diff(1);
-
-      Eigen::Vector3d robot_friction_normal = ee_rotation.inverse() * box_root_rotation * friction_normal;
-      
       pinocchio::computeJointJacobians(model, data_next, q_next);
       pinocchio::framesForwardKinematics(model, data_next, q_next);
 
@@ -449,11 +502,8 @@ public:
       pinocchio::getFrameJacobian(model, data_next, object_contactId,
                                   pinocchio::LOCAL, w_J_object);
 
-      // J_remapped.col(i) = w_J_contact.topRows(3).transpose() * 
-      //       data_next.oMi[model.getJointId("wrist_1_joint")].rotation().transpose() * 
-      //       front_normal_world + w_J_object.topRows(3).transpose() * front_normal;
-
       J_remapped.col(i) = w_J_contact.topRows(3).transpose() * robot_contact_normal + w_J_object.topRows(3).transpose() * front_normal;
+      J_friction_remapped.col(i) = w_J_object.topRows(3).transpose() * friction_normal;
       // Calculate NLE, inertial matrix
       pinocchio::nonLinearEffects(model, data_next, q_next,
                                   vel.segment(n_dof * (i + 1), n_dof));
@@ -554,9 +604,9 @@ public:
       g(n_dof * 2 * (n_step - 1) + 4 * (n_step - 1) + i) =
           - friction(i + 1) + mu * exforce(i + 1);
       g(n_dof * 2 * (n_step - 1) + 5 * (n_step - 1) + i) =
-          - std::min(-psi, 0.0) * (friction(i+1) - mu*exforce(i+1));
+          - std::min(-psi(i+1), 0.0) * (friction(i+1) - mu*exforce(i+1));
       g(n_dof * 2 * (n_step - 1) + 6 * (n_step - 1) + i) =
-          - std::min(psi, 0.0) * (friction(i+1) + mu*exforce(i+1));    
+          - std::min(psi(i+1), 0.0) * (friction(i+1) + mu*exforce(i+1));    
 
     }
     return g;
@@ -593,7 +643,8 @@ public:
     VectorXd effort = GetVariables()->GetComponent("effort")->GetValues();
     VectorXd exforce = GetVariables()->GetComponent("exforce")->GetValues();
     VectorXd slack = GetVariables()->GetComponent("slack")->GetValues();
-    std::vector<T> triplet_pos, triplet_vel, triplet_tau, triplet_exforce, triplet_slack;
+    VectorXd friction = GetVariables()->GetComponent("friction")->GetValues();
+    std::vector<T> triplet_pos, triplet_vel, triplet_tau, triplet_exforce, triplet_slack, triplet_friction;
     for (int i = 0; i < n_step - 1; i++) {
       Eigen::VectorXd q(model.nq), q_next(model.nq);
       q.segment(0, n_dof - 1) = pos.segment(n_dof * i, n_dof - 1);
@@ -655,6 +706,12 @@ public:
           triplet_pos.push_back(T(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i, 
                                   n_dof * (i+1) + j, 
                                   dDistance_box_dq(i, j))); //dDistance_box_k+1_dq_k+1
+          triplet_pos.push_back(T(n_dof * 2 * (n_step - 1) + 5 * (n_step - 1) + i, 
+                                  n_dof * (i+1) + j,
+                                  -psi(i+1) < 0? dpsi_dq(i+1, j) * (friction(i+1) - mu*exforce(i+1)) : 0.0));
+          triplet_pos.push_back(T(n_dof * 2 * (n_step - 1) + 6 * (n_step - 1) + i, 
+                                  n_dof * (i+1) + j,
+                                  psi(i+1) <= 0? -dpsi_dq(i+1, j) * (friction(i+1) + mu*exforce(i+1)) : 0.0));                        
         }
         if (var_set == "velocity") {
           // Triplet for velocity
@@ -688,6 +745,12 @@ public:
                                     n_dof * (i + 1) + k,
                                     -data_next.ddq_dv(j, k))); // ddq_dv_k+1
           }
+          triplet_vel.push_back(T(n_dof * 2 * (n_step - 1) + 5 * (n_step - 1) + i, 
+                                  n_dof * (i+1) + j,
+                                  -psi(i+1) < 0? dpsi_dv(i+1, j) * (friction(i+1) - mu*exforce(i+1)) : 0.0));
+          triplet_vel.push_back(T(n_dof * 2 * (n_step - 1) + 6 * (n_step - 1) + i, 
+                                  n_dof * (i+1) + j,
+                                  psi(i+1) <= 0? -dpsi_dv(i+1, j) * (friction(i+1) + mu*exforce(i+1)) : 0.0));
         }
         if (var_set == "effort") {
           // Triplet for torque
@@ -697,16 +760,28 @@ public:
                                     (-Minv * B)(j, k))); // ddq_dt_k+1
           }
         }
-        if (var_set == "exforce") {
-          for (int k = 0; k < n_exforce; k++) {
-            triplet_exforce.push_back(T(n_dof * (n_step - 1 + i) + j,
-                                        n_exforce * i + n_exforce + k,
-                                        (-Minv * J_remapped.col(i))(j)));
-          }
-        }
+        // if (var_set == "exforce") {
+        //   for (int k = 0; k < n_exforce; k++) {
+        //     triplet_exforce.push_back(T(n_dof * (n_step - 1 + i) + j,
+        //                                 n_exforce * i + n_exforce + k,
+        //                                 (-Minv * J_remapped.col(i))(j)));
+        //   }
+        // }
+        // if (var_set == "friction") {
+        //   for (int k = 0; k < n_exforce; k++) {
+        //     triplet_friction.push_back(T(n_dof * (n_step - 1 + i) + j,
+        //                                 n_exforce * i + n_exforce + k,
+        //                                 (-Minv * J_friction_remapped.col(i))(j)));
+        //   }
+        // }
       }
       if (var_set == "exforce") {
         triplet_exforce.push_back(T(n_dof * 2 * (n_step - 1) + n_step - 1 + i, i + 1, slack(i)));
+        triplet_exforce.push_back(T(n_dof * 2 * (n_step - 1) + 3 * (n_step - 1) + i, i + 1, mu));
+        triplet_exforce.push_back(T(n_dof * 2 * (n_step - 1) + 4 * (n_step - 1) + i, i + 1, mu));
+        triplet_exforce.push_back(T(n_dof * 2 * (n_step - 1) + 5 * (n_step - 1) + i, i + 1, std::min(-psi(i+1), 0.0) * mu));
+        triplet_exforce.push_back(T(n_dof * 2 * (n_step - 1) + 6 * (n_step - 1) + i, i + 1, - std::min(psi(i+1), 0.0) * mu));
+
       }
       if (var_set == "slack") {
         triplet_slack.push_back(T(n_dof * 2 * (n_step - 1) + i, i, -1));
@@ -715,6 +790,15 @@ public:
         // triplet_slack.push_back(T(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i, i, slack(n_step - 1 + i)));
         // triplet_slack.push_back(T(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i, n_step - 1 + i, slack(i)));
         // triplet_slack.push_back(T(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i, 2 * (n_step - 1) + i, -1));
+      }
+      if (var_set == "friction"){
+        triplet_friction.push_back(T(n_dof * (n_step - 1 + i) + 8,
+                                        n_exforce * i + n_exforce,
+                                        (-Minv * J_friction_remapped.col(i))(8)));
+        triplet_friction.push_back(T(n_dof * 2 * (n_step - 1) + 3 * (n_step - 1) + i, i + 1, 1));
+        triplet_friction.push_back(T(n_dof * 2 * (n_step - 1) + 4 * (n_step - 1) + i, i + 1, -1));
+        triplet_friction.push_back(T(n_dof * 2 * (n_step - 1) + 5 * (n_step - 1) + i, i + 1, - std::min(-psi(i+1), 0.0)));
+        triplet_friction.push_back(T(n_dof * 2 * (n_step - 1) + 6 * (n_step - 1) + i, i + 1, - std::min(psi(i+1), 0.0)));
       }
     } 
     if (var_set == "position") {
@@ -731,6 +815,9 @@ public:
     }
     if (var_set == "slack") {
       jac_block.setFromTriplets(triplet_slack.begin(), triplet_slack.end());
+    }
+    if (var_set == "friction") {
+      jac_block.setFromTriplets(triplet_friction.begin(), triplet_friction.end());
     }
   }
 };

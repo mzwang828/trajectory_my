@@ -85,9 +85,10 @@ int main()
 
   IpoptSolver solver;
   solver.SetOption("linear_solver", "mumps");
-  solver.SetOption("jacobian_approximation", "finite-difference-values");
+  solver.SetOption("jacobian_approximation", "exact");
   solver.SetOption("max_cpu_time", 1e6);
   solver.SetOption("max_iter", 30000);
+  solver.SetOption("derivative_test", "first-order");
   solver.Solve(nlp);
 
   nlp.PrintCurrent();
