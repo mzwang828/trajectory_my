@@ -203,6 +203,18 @@ target_link_libraries(snopt_ur3
 )
 target_compile_definitions(snopt_ur3 PRIVATE ${PINOCCHIO_CFLAGS_OTHER})
 
+# batch test
+add_executable(bt_ipopt src/bt_ipopt.cpp)
+add_dependencies(bt_ipopt ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+target_link_libraries(bt_ipopt
+  ${Boost_LIBRARIES}
+  ${catkin_LIBRARIES}
+  ${PKG_HPP_FCL_LDFLAGS}
+  ${PINOCCHIO_LIBRARIES}
+  yaml-cpp
+)
+target_compile_definitions(bt_ipopt PRIVATE ${PINOCCHIO_CFLAGS_OTHER})
+
 #############
 ## Install ##
 #############

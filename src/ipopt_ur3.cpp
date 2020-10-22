@@ -88,7 +88,7 @@ int main()
   solver.SetOption("jacobian_approximation", "exact");
   solver.SetOption("max_cpu_time", 1e6);
   solver.SetOption("max_iter", 30000);
-  solver.SetOption("derivative_test", "first-order");
+  // solver.SetOption("derivative_test", "first-order");
   solver.Solve(nlp);
 
   nlp.PrintCurrent();

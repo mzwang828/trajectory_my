@@ -96,6 +96,40 @@ public:
     xvar = init_values;
   }
 
+  ExVariables(int n, const std::string &name, double goal_in) : VariableSet(n, name) {
+    YAML::Node params = YAML::LoadFile(
+        "/home/mzwang/catkin_ws/src/trajectory_my/Config/params.yaml");
+    n_dof = params["n_dof"].as<int>();
+    n_control = params["n_control"].as<int>();
+    n_exforce = params["n_exforce"].as<int>();
+    n_step = params["n_step"].as<int>();
+    t_step = params["t_step"].as<double>();
+    goal_x = goal_in;
+
+    xvar = Eigen::VectorXd::Zero(n);
+    // the initial values where the NLP starts iterating from
+    if (name == "position") {
+      for (int i = 0; i < n; i++)
+        xvar(i) = 0.3;
+    } else if (name == "velocity") {
+      for (int i = 0; i < n; i++)
+        xvar(i) = 0.0;
+    } else if (name == "effort") {
+      for (int i = 0; i < n; i++)
+        xvar(i) = 0;
+    } else if (name == "exforce") {
+      for (int i = 0; i < n; i++)
+        xvar(i) = 0;
+    } else if (name == "slack") {
+      for (int i = 0; i < n; i++) {
+        xvar(i) = 1e-2;
+      }
+    } else if (name == "friction") {
+      for (int i = 0; i < n; i++) {
+        xvar(i) = 1.0;
+      }
+    }
+  }
   // Here is where you can transform the Eigen::Vector into whatever
   // internal representation of your variables you have (here two doubles, but
   // can also be complex classes such as splines, etc..
@@ -125,7 +159,6 @@ public:
       bounds.at(8) = Bounds(0, 0);
 
       bounds.at(GetRows() - 1) = Bounds(goal_x, goal_x);
-      // bounds.at(GetRows() - 2) = Bounds(0.3, 0.3);
     } else if (GetName() == "velocity") {
       for (int i = 0; i < GetRows(); i++)
         bounds.at(i) = Bounds(-velocity_lim, velocity_lim);
@@ -346,10 +379,10 @@ public:
 
       boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_box_geom (new hpp::fcl::Box (0.1,0.1,0.1));
       boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_ee_geom (new hpp::fcl::Cylinder (0.03, 0.00010));
-      boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_box_front_geom (new hpp::fcl::Box (0.00010,0.08,0.08));
+      // boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_box_front_geom (new hpp::fcl::Box (0.00010,0.08,0.08));
 
       // boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_ee_geom (new hpp::fcl::Sphere (0.005));
-      // boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_box_front_geom (new hpp::fcl::Sphere (0.005));
+      boost::shared_ptr<hpp::fcl::CollisionGeometry> fcl_box_front_geom (new hpp::fcl::Sphere (0.005));
 
       hpp::fcl::CollisionObject fcl_box(fcl_box_geom, box_root_rotation, box_root_translation);
       hpp::fcl::CollisionObject fcl_ee(fcl_ee_geom, ee_rotation, ee_translation);
