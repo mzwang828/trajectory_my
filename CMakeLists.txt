@@ -215,6 +215,18 @@ target_link_libraries(bt_ipopt
 )
 target_compile_definitions(bt_ipopt PRIVATE ${PINOCCHIO_CFLAGS_OTHER})
 
+# BT_SNOPT
+add_executable(bt_snopt src/bt_snopt.cpp)
+add_dependencies(bt_snopt ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+target_link_libraries(bt_snopt
+  ${Boost_LIBRARIES}
+  ${catkin_LIBRARIES}
+  ${PKG_HPP_FCL_LDFLAGS}
+  ${PINOCCHIO_LIBRARIES}
+  yaml-cpp
+)
+target_compile_definitions(bt_snopt PRIVATE ${PINOCCHIO_CFLAGS_OTHER})
+
 #############
 ## Install ##
 #############
