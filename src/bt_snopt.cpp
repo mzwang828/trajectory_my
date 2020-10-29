@@ -1,9 +1,10 @@
 #include <iostream>
 #include <fstream>
 #include <ifopt/problem.h>
-#include <ifopt/ipopt_solver.h>
+#include <ifopt/snopt_solver.h>
 #include "ur3_box_fulldof.h"
 #include <yaml-cpp/yaml.h>
+#include <chrono>
 
 using namespace ifopt;
 
@@ -16,11 +17,7 @@ int main()
   int n_exforce = params["n_exforce"].as<int>();
   int n_control = params["n_control"].as<int>();
 
-  IpoptSolver solver;
-  solver.SetOption("linear_solver", "mumps");
-  solver.SetOption("jacobian_approximation", "exact");
-  solver.SetOption("max_cpu_time", 1e6);
-  solver.SetOption("max_iter", 3000);
+  SnoptSolver solver;
 
   std::string output_path = "/home/mzwang/catkin_ws/src/trajectory_my/logs/time_and_cost.txt";
   std::ofstream file;
@@ -29,7 +26,6 @@ int main()
   double goal_r = 0.0;
   YAML::Node goals_yaml = YAML::LoadFile("/home/mzwang/catkin_ws/src/trajectory_my/Config/goals.yaml");
   const YAML::Node &goals = goals_yaml["goal"];
-
   for (YAML::const_iterator it = goals.begin(); it != goals.end(); ++it)
   {
     const YAML::Node &goal = *it;
@@ -46,7 +42,9 @@ int main()
     nlp.AddCostSet      (std::make_shared<ExCost>());
 
     nlp.PrintCurrent();
+    auto tPlanStart = std::chrono::system_clock::now();
     solver.Solve(nlp);
+    auto tPlanEnd = std::chrono::system_clock::now();
     nlp.PrintCurrent();
     
     int n_cv = 0;
@@ -60,9 +58,9 @@ int main()
       if (val < lower-tol || upper+tol < val)
         n_cv++; // constraint out of bounds
     }
-
+        
     if (file.is_open()){
-      file << solver.GetTotalWallclockTime() << ", " << nlp.GetCosts().GetValues() << ", " << n_cv << "\n";
+      file << std::chrono::duration<double>(tPlanEnd - tPlanStart).count() << ", " << nlp.GetCosts().GetValues() << "," << n_cv <<"\n";
     }
     else{
       std::cout << " WARNING: Unable to open the trajectory file.\n";
