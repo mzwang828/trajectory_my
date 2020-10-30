@@ -19,7 +19,7 @@ int main()
 
   SnoptSolver solver;
 
-  std::string output_path = "/home/mzwang/catkin_ws/src/trajectory_my/logs/time_and_cost.txt";
+  std::string output_path = "/home/mzwang/catkin_ws/src/trajectory_my/logs/time_and_cost_snopt.txt";
   std::ofstream file;
   file.open(output_path, std::ios::app);
 
