@@ -198,7 +198,7 @@ private:
   int n_step;                   // number of steps or (knot points - 1)
   double t_step;                // length of each step
   double position_lim = 3.14;
-  double velocity_lim = 5;
+  double velocity_lim = 2;
   double effort_lim = 200;
   double force_lim = 100;
   double goal_x;

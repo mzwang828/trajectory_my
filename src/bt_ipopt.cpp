@@ -22,7 +22,7 @@ int main()
   solver.SetOption("max_cpu_time", 1e6);
   solver.SetOption("max_iter", 3000);
 
-  std::string output_path = "/home/mzwang/catkin_ws/src/trajectory_my/logs/time_and_cost.txt";
+  std::string output_path = "/home/mzwang/catkin_ws/src/trajectory_my/logs/time_and_cost_ipopt.txt";
   std::ofstream file;
   file.open(output_path, std::ios::app);
 
