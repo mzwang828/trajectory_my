@@ -20,7 +20,7 @@ int main()
   solver.SetOption("linear_solver", "mumps");
   solver.SetOption("jacobian_approximation", "exact");
   solver.SetOption("max_cpu_time", 1e6);
-  solver.SetOption("max_iter", 3000);
+  solver.SetOption("max_iter", 6000);
 
   std::string output_path = "/home/mzwang/catkin_ws/src/trajectory_my/logs/time_and_cost_ipopt.txt";
   std::ofstream file;
