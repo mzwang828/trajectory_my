@@ -338,7 +338,7 @@ public:
     goal = params["box_goal"].as<std::vector<double>>();
     
     //temp
-    goal_local_temp << 1.0, -1.0, 0.0;
+    goal_local_temp << 1.0, 0.0, 0.0;
 
     front_normal << 1, 0, 0;
     back_normal << -1, 0, 0;
@@ -727,7 +727,7 @@ public:
       g(n_dof * 2 * (n_step - 1) + 1 * (n_step - 1) + i) = 
           distance_front - d_slack(i);
       g(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i) = 
-          -std::min(front_normal.dot(goal_local.col(i)), 0.0) * exforce(i + 1);
+          -std::min(front_normal.dot(goal_local.col(i))-(1e-6), 0.0) * exforce(i + 1);
       g(n_dof * 2 * (n_step - 1) + 3 * (n_step - 1) + i) = 
           -std::min(-front_normal.dot(goal_local.col(i)), 0.0) * 
           (exforce(i + 1) * d_slack(i) - df_slack(i));
@@ -735,7 +735,7 @@ public:
       g(n_dof * 2 * (n_step - 1) + 4 * (n_step - 1) + i) = 
           distance_left - d_slack(n_step - 1 + i);
       g(n_dof * 2 * (n_step - 1) + 5 * (n_step - 1) + i) = 
-          -std::min(left_normal.dot(goal_local.col(i)), 0.0) * exforce(n_step + i + 1);
+          -std::min(left_normal.dot(goal_local.col(i))-(1e-6), 0.0) * exforce(n_step + i + 1);
       g(n_dof * 2 * (n_step - 1) + 6 * (n_step - 1) + i) = 
           -std::min(-left_normal.dot(goal_local.col(i)), 0.0) * 
           (exforce(n_step + i + 1) * d_slack(n_step - 1 + i)
@@ -744,7 +744,7 @@ public:
       g(n_dof * 2 * (n_step - 1) + 7 * (n_step - 1) + i) = 
           distance_right - d_slack(2 * (n_step - 1) + i);
       g(n_dof * 2 * (n_step - 1) + 8 * (n_step - 1) + i) = 
-          -std::min(right_normal.dot(goal_local.col(i)), 0.0) * exforce(2 * n_step + i + 1);
+          -std::min(right_normal.dot(goal_local.col(i))-(1e-6), 0.0) * exforce(2 * n_step + i + 1);
       g(n_dof * 2 * (n_step - 1) + 9 * (n_step - 1) + i) = 
           -std::min(-right_normal.dot(goal_local.col(i)), 0.0) * 
           (exforce(2 * n_step + i + 1) * d_slack(2 * (n_step - 1) + i)
@@ -753,7 +753,7 @@ public:
       g(n_dof * 2 * (n_step - 1) + 10 * (n_step - 1) + i) = 
           distance_back - d_slack(3 * (n_step - 1) + i);
       g(n_dof * 2 * (n_step - 1) + 11 * (n_step - 1) + i) = 
-          -std::min(back_normal.dot(goal_local.col(i)), 0.0) * exforce(3 * n_step + i + 1);
+          -std::min(back_normal.dot(goal_local.col(i))-(1e-6), 0.0) * exforce(3 * n_step + i + 1);
       g(n_dof * 2 * (n_step - 1) + 12 * (n_step - 1) + i) = 
           -std::min(-back_normal.dot(goal_local.col(i)), 0.0) * 
           (exforce(3 * n_step + i + 1) * d_slack(3 * (n_step - 1) + i)
@@ -965,20 +965,20 @@ public:
       }
       if (var_set == "exforce") {
         triplet_exforce.push_back(T(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i, 
-                                  i + 1, -std::min(front_normal.dot(goal_local.col(i)), 0.0)));
+                                  i + 1, -std::min(front_normal.dot(goal_local.col(i))-(1e-6), 0.0)));
         triplet_exforce.push_back(T(n_dof * 2 * (n_step - 1) + 3 * (n_step - 1) + i, 
                                   i + 1, -std::min(-front_normal.dot(goal_local.col(i)), 0.0) * d_slack(i)));
         triplet_exforce.push_back(T(n_dof * 2 * (n_step - 1) + 5 * (n_step - 1) + i, 
-                                  n_step + i + 1, -std::min(left_normal.dot(goal_local.col(i)), 0.0)));
+                                  n_step + i + 1, -std::min(left_normal.dot(goal_local.col(i))-(1e-6), 0.0)));
         triplet_exforce.push_back(T(n_dof * 2 * (n_step - 1) + 6 * (n_step - 1) + i, 
                                   n_step + i + 1, -std::min(-left_normal.dot(goal_local.col(i)), 0.0) * d_slack(n_step - 1 + i)));
         triplet_exforce.push_back(T(n_dof * 2 * (n_step - 1) + 8 * (n_step - 1) + i, 
-                                  2 * n_step + i + 1, -std::min(right_normal.dot(goal_local.col(i)), 0.0)));
+                                  2 * n_step + i + 1, -std::min(right_normal.dot(goal_local.col(i))-(1e-6), 0.0)));
         triplet_exforce.push_back(T(n_dof * 2 * (n_step - 1) + 9 * (n_step - 1) + i, 
                                   2 * n_step + i + 1, 
                                   -std::min(-right_normal.dot(goal_local.col(i)), 0.0) * d_slack(2 * (n_step - 1) + i)));
         triplet_exforce.push_back(T(n_dof * 2 * (n_step - 1) + 11 * (n_step - 1) + i, 
-                                  3 * n_step + i + 1, -std::min(back_normal.dot(goal_local.col(i)), 0.0)));
+                                  3 * n_step + i + 1, -std::min(back_normal.dot(goal_local.col(i))-(1e-6), 0.0)));
         triplet_exforce.push_back(T(n_dof * 2 * (n_step - 1) + 12 * (n_step - 1) + i, 
                                   3 * n_step + i + 1, 
                                   -std::min(-back_normal.dot(goal_local.col(i)), 0.0) * d_slack(3 * (n_step - 1) + i)));                                  
