@@ -59,29 +59,6 @@ public:
     xvar = Eigen::VectorXd::Zero(n);
     // the initial values where the NLP starts iterating from
     if (name == "position") {
-      // for (int i = 0; i < n_step/2; i++){
-      //   xvar(i*n_dof) =  0;
-      //   xvar(i*n_dof+1) = -1.0 + i * (0.42*2/n_step);
-      //   xvar(i*n_dof+2) = 1.86 - i * (0.43*2/n_step);
-      //   xvar(i*n_dof+3) = -0.8 - i * (0.3*2/n_step);
-      //   xvar(i*n_dof+4) = 1.57;
-      //   xvar(i*n_dof+5) = 0;
-      //   xvar(i*n_dof+6) = 0.49;
-      //   xvar(i*n_dof+7) = 0.131073;
-      //   xvar(i*n_dof+8) = 0;
-      // }
-      // for (int i = n_step/2; i < n_step; i++){
-
-      //   xvar(i*n_dof) =  0;
-      //   xvar(i*n_dof+1) = -0.58;
-      //   xvar(i*n_dof+2) = 1.43;
-      //   xvar(i*n_dof+3) = -0.83;
-      //   xvar(i*n_dof+4) = 1.57;
-      //   xvar(i*n_dof+5) = 0;
-      //   xvar(i*n_dof+6) = 0.49 + (i - n_step/2) * (0.14*2/n_step);
-      //   xvar(i*n_dof+7) = 0.131073;
-      //   xvar(i*n_dof+8) = 0;
-      // }
       for (int i = 0; i < n; i++)
         xvar(i) = 0.3;
     } else if (name == "velocity") {
@@ -252,7 +229,7 @@ public:
   mutable Eigen::MatrixXd fext_robot, fext_box; // used to save fext values for each joint
   mutable Eigen::MatrixXd dDistance_box_dq, dDistance_front_dq, dDistance_back_dq,
                           dDistance_left_dq, dDistance_right_dq; // numerical gradients for distance
-  mutable Eigen::MatrixXd goal_local; // goal in box local frame
+  mutable Eigen::MatrixXd goal_local, dgx_dq, dgy_dq; // goal in box local frame
   Eigen::Vector3d goal_local_temp; // temporary fake local goal
 
   // Input Mapping & Friction
@@ -384,6 +361,11 @@ public:
     dDistance_right_dq.setZero();
     dDistance_back_dq.resize(n_step, n_dof);
     dDistance_back_dq.setZero();
+
+    dgx_dq.resize(n_step, n_dof);
+    dgx_dq.setZero();
+    dgy_dq.resize(n_step, n_dof);
+    dgy_dq.setZero();
   }
 
   void setRootJointBounds(pinocchio::Model &model,
@@ -583,8 +565,25 @@ public:
       model.frames[object_rightId].placement.translation() = right_r_j2c;
       model.frames[object_backId].placement.translation() = back_r_j2c;
 
-      // goal_local.col(i) = root_joint_frame_placement.inverse().act(goal_v3d).normalized();
-      goal_local.col(i) = goal_local_temp;
+      goal_local.col(i) = root_joint_frame_placement.inverse().act(goal_v3d);
+
+      dgx_dq(i, 6) = -cos(pos(n_dof * (i + 1) + n_dof - 1));
+      dgx_dq(i, 7) = sin(pos(n_dof * (i + 1) + n_dof - 1));
+      dgx_dq(i, 8) = -sin(pos(n_dof * (i + 1) + n_dof - 1)) * (goal_v3d(0) - pos(n_dof * (i + 1) + n_dof - 3))
+                     -cos(pos(n_dof * (i + 1) + n_dof - 1)) * (goal_v3d(1) - pos(n_dof * (i + 1) + n_dof - 2));
+
+      dgy_dq(i, 6) = -sin(pos(n_dof * (i + 1) + n_dof - 1));
+      dgy_dq(i, 7) = -cos(pos(n_dof * (i + 1) + n_dof - 1));
+      dgy_dq(i, 8) = cos(pos(n_dof * (i + 1) + n_dof - 1)) * (goal_v3d(0) - pos(n_dof * (i + 1) + n_dof - 3))
+                    -sin(pos(n_dof * (i + 1) + n_dof - 1)) * (goal_v3d(1) - pos(n_dof * (i + 1) + n_dof - 2));
+
+      // std::cout << root_joint_frame_placement.rotation() << "\n";
+      // std::cout << root_joint_frame_placement.translation().transpose() << "\n";
+      // std::cout << goal_v3d.transpose() << "\n";
+      // std::cout << goal_local.col(i).transpose() << "\n";
+      // std::cout << "------\n";
+
+      // goal_local.col(i) = goal_local_temp;
 
       pinocchio::computeJointJacobians(model, data_next, q_next);
       pinocchio::framesForwardKinematics(model, data_next, q_next);
@@ -727,7 +726,7 @@ public:
       g(n_dof * 2 * (n_step - 1) + 1 * (n_step - 1) + i) = 
           distance_front - d_slack(i);
       g(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i) = 
-          -std::min(front_normal.dot(goal_local.col(i))-(1e-6), 0.0) * exforce(i + 1);
+          -std::min(front_normal.dot(goal_local.col(i))-(1e-3), 0.0) * exforce(i + 1);
       g(n_dof * 2 * (n_step - 1) + 3 * (n_step - 1) + i) = 
           -std::min(-front_normal.dot(goal_local.col(i)), 0.0) * 
           (exforce(i + 1) * d_slack(i) - df_slack(i));
@@ -735,7 +734,7 @@ public:
       g(n_dof * 2 * (n_step - 1) + 4 * (n_step - 1) + i) = 
           distance_left - d_slack(n_step - 1 + i);
       g(n_dof * 2 * (n_step - 1) + 5 * (n_step - 1) + i) = 
-          -std::min(left_normal.dot(goal_local.col(i))-(1e-6), 0.0) * exforce(n_step + i + 1);
+          -std::min(left_normal.dot(goal_local.col(i))-(1e-3), 0.0) * exforce(n_step + i + 1);
       g(n_dof * 2 * (n_step - 1) + 6 * (n_step - 1) + i) = 
           -std::min(-left_normal.dot(goal_local.col(i)), 0.0) * 
           (exforce(n_step + i + 1) * d_slack(n_step - 1 + i)
@@ -744,7 +743,7 @@ public:
       g(n_dof * 2 * (n_step - 1) + 7 * (n_step - 1) + i) = 
           distance_right - d_slack(2 * (n_step - 1) + i);
       g(n_dof * 2 * (n_step - 1) + 8 * (n_step - 1) + i) = 
-          -std::min(right_normal.dot(goal_local.col(i))-(1e-6), 0.0) * exforce(2 * n_step + i + 1);
+          -std::min(right_normal.dot(goal_local.col(i))-(1e-3), 0.0) * exforce(2 * n_step + i + 1);
       g(n_dof * 2 * (n_step - 1) + 9 * (n_step - 1) + i) = 
           -std::min(-right_normal.dot(goal_local.col(i)), 0.0) * 
           (exforce(2 * n_step + i + 1) * d_slack(2 * (n_step - 1) + i)
@@ -753,7 +752,7 @@ public:
       g(n_dof * 2 * (n_step - 1) + 10 * (n_step - 1) + i) = 
           distance_back - d_slack(3 * (n_step - 1) + i);
       g(n_dof * 2 * (n_step - 1) + 11 * (n_step - 1) + i) = 
-          -std::min(back_normal.dot(goal_local.col(i))-(1e-6), 0.0) * exforce(3 * n_step + i + 1);
+          -std::min(back_normal.dot(goal_local.col(i))-(1e-3), 0.0) * exforce(3 * n_step + i + 1);
       g(n_dof * 2 * (n_step - 1) + 12 * (n_step - 1) + i) = 
           -std::min(-back_normal.dot(goal_local.col(i)), 0.0) * 
           (exforce(3 * n_step + i + 1) * d_slack(3 * (n_step - 1) + i)
@@ -877,11 +876,11 @@ public:
       for (int j = 0; j < n_dof; j++) {
         if (var_set == "position") {
           // Triplet for position
-          triplet_pos.push_back(T(n_dof * i + j, n_dof * i + j, 1)); // dq_dq_k
+          triplet_pos.push_back(T(n_dof * i + j, n_dof * i + j, 1)); // dq_dq_t
           triplet_pos.push_back(
-              T(n_dof * i + j, n_dof * (i+1) + j, -1)); // dq_dq_k+1
+              T(n_dof * i + j, n_dof * (i+1) + j, -1)); // dq_dq_t+1
           triplet_pos.push_back(
-              T(n_dof * i + j, n_dof * (i+1) + n_dof - 1, dq_dtheta_plus(j))); // dq_dtheta_k+1
+              T(n_dof * i + j, n_dof * (i+1) + n_dof - 1, dq_dtheta_plus(j))); // dq_dtheta_t+1
           for (int k = 0; k < n_dof; k++) {
             triplet_pos.push_back(T(n_dof * (n_step - 1 + i) + j,
                                     n_dof * (i + 1) + k,
@@ -901,8 +900,50 @@ public:
                                   dDistance_right_dq(i, j))); //dDistance_right_k+1_dq_k+1
           triplet_pos.push_back(T(n_dof * 2 * (n_step - 1) + 10 * (n_step - 1) + i, 
                                   n_dof * (i+1) + j, 
-                                  dDistance_back_dq(i, j))); //dDistance_right_k+1_dq_k+1                        
+                                  dDistance_back_dq(i, j))); //dDistance_right_k+1_dq_k+1
+          // dGoal_Local_dq_t+1
+          Eigen::Vector3d dgl_dq(dgx_dq(i, j), dgy_dq(i, j), 0.0);
+          triplet_pos.push_back(T(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i, 
+                                  n_dof * (i+1) + j,
+                                  front_normal.dot(goal_local.col(i))-(1e-3) < 0.0?
+                                  front_normal.dot(dgl_dq) * exforce(i + 1) : 0.0));
+          triplet_pos.push_back(T(n_dof * 2 * (n_step - 1) + 3 * (n_step - 1) + i, 
+                                  n_dof * (i+1) + j,
+                                  -front_normal.dot(goal_local.col(i)) < 0.0?
+                                  -front_normal.dot(dgl_dq) * (exforce(i + 1) * d_slack(i) - df_slack(i)) : 0.0));                       
+          
+          triplet_pos.push_back(T(n_dof * 2 * (n_step - 1) + 5 * (n_step - 1) + i, 
+                                  n_dof * (i+1) + j,
+                                  left_normal.dot(goal_local.col(i))-(1e-3) < 0.0?
+                                  left_normal.dot(dgl_dq) * exforce(n_step + i + 1) : 0.0));
+          triplet_pos.push_back(T(n_dof * 2 * (n_step - 1) + 6 * (n_step - 1) + i, 
+                                  n_dof * (i+1) + j,
+                                  -left_normal.dot(goal_local.col(i)) < 0.0?
+                                  -left_normal.dot(dgl_dq) * 
+                                  (exforce(n_step + i + 1) * d_slack(n_step - 1 + i) 
+                                  - df_slack(1 * (n_step - 1) + i)) : 0.0));
 
+          triplet_pos.push_back(T(n_dof * 2 * (n_step - 1) + 8 * (n_step - 1) + i, 
+                                  n_dof * (i+1) + j,
+                                  right_normal.dot(goal_local.col(i))-(1e-3) < 0.0?
+                                  right_normal.dot(dgl_dq) * exforce(2 * n_step + i + 1) : 0.0));
+          triplet_pos.push_back(T(n_dof * 2 * (n_step - 1) + 9 * (n_step - 1) + i, 
+                                  n_dof * (i+1) + j,
+                                  -right_normal.dot(goal_local.col(i)) < 0.0?
+                                  -right_normal.dot(dgl_dq) * 
+                                  (exforce(2 * n_step + i + 1) * d_slack(2 * (n_step - 1) + i)
+                                  - df_slack(2 * (n_step - 1) + i)) : 0.0));
+                            
+          triplet_pos.push_back(T(n_dof * 2 * (n_step - 1) + 11 * (n_step - 1) + i, 
+                                  n_dof * (i+1) + j,
+                                  back_normal.dot(goal_local.col(i))-(1e-3) < 0.0?
+                                  back_normal.dot(dgl_dq) * exforce(3 * n_step + i + 1) : 0.0));
+          triplet_pos.push_back(T(n_dof * 2 * (n_step - 1) + 12 * (n_step - 1) + i, 
+                                  n_dof * (i+1) + j,
+                                  -back_normal.dot(goal_local.col(i)) < 0.0?
+                                  -back_normal.dot(dgl_dq) * 
+                                  (exforce(3 * n_step + i + 1) * d_slack(3 * (n_step - 1) + i)
+                                  - df_slack(3 * (n_step - 1) + i)) : 0.0));
         }
         if (var_set == "velocity") {
           // Triplet for velocity
@@ -965,20 +1006,20 @@ public:
       }
       if (var_set == "exforce") {
         triplet_exforce.push_back(T(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i, 
-                                  i + 1, -std::min(front_normal.dot(goal_local.col(i))-(1e-6), 0.0)));
+                                  i + 1, -std::min(front_normal.dot(goal_local.col(i))-(1e-3), 0.0)));
         triplet_exforce.push_back(T(n_dof * 2 * (n_step - 1) + 3 * (n_step - 1) + i, 
                                   i + 1, -std::min(-front_normal.dot(goal_local.col(i)), 0.0) * d_slack(i)));
         triplet_exforce.push_back(T(n_dof * 2 * (n_step - 1) + 5 * (n_step - 1) + i, 
-                                  n_step + i + 1, -std::min(left_normal.dot(goal_local.col(i))-(1e-6), 0.0)));
+                                  n_step + i + 1, -std::min(left_normal.dot(goal_local.col(i))-(1e-3), 0.0)));
         triplet_exforce.push_back(T(n_dof * 2 * (n_step - 1) + 6 * (n_step - 1) + i, 
                                   n_step + i + 1, -std::min(-left_normal.dot(goal_local.col(i)), 0.0) * d_slack(n_step - 1 + i)));
         triplet_exforce.push_back(T(n_dof * 2 * (n_step - 1) + 8 * (n_step - 1) + i, 
-                                  2 * n_step + i + 1, -std::min(right_normal.dot(goal_local.col(i))-(1e-6), 0.0)));
+                                  2 * n_step + i + 1, -std::min(right_normal.dot(goal_local.col(i))-(1e-3), 0.0)));
         triplet_exforce.push_back(T(n_dof * 2 * (n_step - 1) + 9 * (n_step - 1) + i, 
                                   2 * n_step + i + 1, 
                                   -std::min(-right_normal.dot(goal_local.col(i)), 0.0) * d_slack(2 * (n_step - 1) + i)));
         triplet_exforce.push_back(T(n_dof * 2 * (n_step - 1) + 11 * (n_step - 1) + i, 
-                                  3 * n_step + i + 1, -std::min(back_normal.dot(goal_local.col(i))-(1e-6), 0.0)));
+                                  3 * n_step + i + 1, -std::min(back_normal.dot(goal_local.col(i))-(1e-3), 0.0)));
         triplet_exforce.push_back(T(n_dof * 2 * (n_step - 1) + 12 * (n_step - 1) + i, 
                                   3 * n_step + i + 1, 
                                   -std::min(-back_normal.dot(goal_local.col(i)), 0.0) * d_slack(3 * (n_step - 1) + i)));                                  
