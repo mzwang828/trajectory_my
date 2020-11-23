@@ -230,7 +230,6 @@ public:
   mutable Eigen::MatrixXd dDistance_box_dq, dDistance_front_dq, dDistance_back_dq,
                           dDistance_left_dq, dDistance_right_dq; // numerical gradients for distance
   mutable Eigen::MatrixXd goal_local, dgx_dq, dgy_dq; // goal in box local frame
-  Eigen::Vector3d goal_local_temp; // temporary fake local goal
 
   // Input Mapping & Friction
   Eigen::MatrixXd B, f;
@@ -245,19 +244,6 @@ public:
   ExConstraint(int n) : ExConstraint(n, "constraint1") {}
   ExConstraint(int n, std::vector<double> &goal_in) : ExConstraint(n, "constraint1"){
     goal_v3d << goal_in[0], goal_in[1], 0;
-    // temp
-    if (goal_in[1] > 0)
-    {
-      goal_local_temp << 1.0, 1.0, 0.0;
-    }
-    else if (goal_in[1] < 0)
-    {
-      goal_local_temp << 1.0, -1.0, 0.0;
-    }
-    else
-    {
-      goal_local_temp << 1.0, 0.0, 0.0;
-    }
   }
   ExConstraint(int n, const std::string &name) : ConstraintSet(n, name) {
     // build the pusher model
@@ -313,9 +299,6 @@ public:
     t_step = params["t_step"].as<double>();
     constraint_type = params["constraint_type"].as<int>();
     goal = params["box_goal"].as<std::vector<double>>();
-    
-    //temp
-    goal_local_temp << 1.0, 0.0, 0.0;
 
     front_normal << 1, 0, 0;
     back_normal << -1, 0, 0;
@@ -577,14 +560,6 @@ public:
       dgy_dq(i, 8) = cos(pos(n_dof * (i + 1) + n_dof - 1)) * (goal_v3d(0) - pos(n_dof * (i + 1) + n_dof - 3))
                     -sin(pos(n_dof * (i + 1) + n_dof - 1)) * (goal_v3d(1) - pos(n_dof * (i + 1) + n_dof - 2));
 
-      // std::cout << root_joint_frame_placement.rotation() << "\n";
-      // std::cout << root_joint_frame_placement.translation().transpose() << "\n";
-      // std::cout << goal_v3d.transpose() << "\n";
-      // std::cout << goal_local.col(i).transpose() << "\n";
-      // std::cout << "------\n";
-
-      // goal_local.col(i) = goal_local_temp;
-
       pinocchio::computeJointJacobians(model, data_next, q_next);
       pinocchio::framesForwardKinematics(model, data_next, q_next);
       
@@ -609,10 +584,6 @@ public:
                                   pinocchio::LOCAL, w_J_right);
       pinocchio::getFrameJacobian(model, data_next, object_backId,
                                   pinocchio::LOCAL, w_J_back);                                  
-                                
-      // J_remapped.col(i) = w_J_robot.topRows(3).transpose() * 
-      //       data_next.oMi[model.getJointId("wrist_1_joint")].rotation().transpose() * 
-      //       front_normal_world + w_J_front.topRows(3).transpose() * front_normal;
 
       J_front_remapped.col(i) = w_J_robot.topRows(3).transpose() * robot_contact_normal + w_J_front.topRows(3).transpose() * front_normal;
       J_left_remapped.col(i) = w_J_robot.topRows(3).transpose() * robot_contact_normal + w_J_left.topRows(3).transpose() * left_normal;
@@ -706,16 +677,6 @@ public:
               (vel.segment(n_dof * (i + 1), n_dof) -
                vel.segment(n_dof * i, n_dof)) - a_classical +
               Minv * f * vf_box;
-      // std::cout << "check v_r: " << vel(n_dof * (i+1) - 1) << "\n";
-      // std::cout << "check velocity: " << vf_box.transpose() << "\n";
-      // std::cout << "check friction: " << (Minv * f * vf_box).transpose() << "\n";
-
-      // g.segment(n_dof * (n_step - 1 + i), n_dof) =
-      //     1 / t_step *
-      //         (vel.segment(n_dof * (i + 1), n_dof) -
-      //          vel.segment(n_dof * i, n_dof)) +
-      //     Minv * (data_next.nle - effort_remap -
-      //     J_remapped.col(i) * exforce(i + 1) + f * tanh(20 * vel(n_dof * (i) + 3)));
 
       // distance box constraint
       g(n_dof * 2 * (n_step - 1) + 0 * (n_step - 1) + i) =
@@ -757,30 +718,6 @@ public:
           -std::min(-back_normal.dot(goal_local.col(i)), 0.0) * 
           (exforce(3 * n_step + i + 1) * d_slack(3 * (n_step - 1) + i)
           - df_slack(3 * (n_step - 1) + i));
-
-      // // front
-      // g(n_dof * 2 * (n_step - 1) + 1 * (n_step - 1) + i) = 
-      //     distance_front - d_slack(i);
-      // g(n_dof * 2 * (n_step - 1) + 2 * (n_step - 1) + i) = 
-      //     exforce(i + 1);
-      // g(n_dof * 2 * (n_step - 1) + 3 * (n_step - 1) + i) = 
-      //     (exforce(i + 1) * d_slack(i) - df_slack(i));
-      // // left
-      // g(n_dof * 2 * (n_step - 1) + 4 * (n_step - 1) + i) = 
-      //     distance_left - d_slack(n_step - 1 + i);
-      // g(n_dof * 2 * (n_step - 1) + 5 * (n_step - 1) + i) = 
-      //      exforce(n_step + i + 1);
-      // g(n_dof * 2 * (n_step - 1) + 6 * (n_step - 1) + i) = 
-      //     (exforce(n_step + i + 1) * d_slack(n_step - 1 + i)
-      //     - df_slack(1 * (n_step - 1) + i));
-      // // right
-      // g(n_dof * 2 * (n_step - 1) + 7 * (n_step - 1) + i) = 
-      //     distance_right - d_slack(2 * (n_step - 1) + i);
-      // g(n_dof * 2 * (n_step - 1) + 8 * (n_step - 1) + i) = 
-      //     - exforce(2 * n_step + i + 1);
-      // g(n_dof * 2 * (n_step - 1) + 9 * (n_step - 1) + i) = 
-      //     -(exforce(2 * n_step + i + 1) * d_slack(2 * (n_step - 1) + i)
-      //     - df_slack(2 * (n_step - 1) + i));
     }
     return g;
   };
@@ -949,10 +886,6 @@ public:
           // Triplet for velocity
           triplet_vel.push_back(T(n_dof * (n_step - 1 + i) + j, n_dof * i + j,
                                   -1.0 / t_step)); // ddq_dv_k
-          // triplet_vel.push_back(T(n_dof * (n_step - 1 + i) + j, n_dof * (i+1) - 3,
-          //                         (Minv * f)(j) * 20 * 
-          //                             (1.0 - tanh(20 * vel(n_dof * (i+1) - 3)) *
-          //                                        tanh(20 * vel(n_dof * (i+1) - 3))))); // ddq_dv_k from smoothed friction term
 
           triplet_vel.push_back(T(n_dof * (n_step - 1 + i) + j, n_dof * (i+1) - 3,
                                   (Minv * f)(j, 0) * 20 * 
@@ -1083,9 +1016,7 @@ public:
   ExCost(const std::string &name) : CostTerm(name) {
     YAML::Node params = YAML::LoadFile(
         "/home/mzwang/catkin_ws/src/trajectory_my/Config/params.yaml");
-    cost_func_type = params["cost_func_type"].as<int>();
     n_step = params["n_step"].as<int>();
-    constraint_type = params["constraint_type"].as<int>();
     }
 
   double GetCost() const override {
@@ -1094,26 +1025,11 @@ public:
     VectorXd df_slack = GetVariables()->GetComponent("df_slack")->GetValues();
 
     double cost = vel.squaredNorm();
-    
-    if (constraint_type == 0){
-      // penalty on slack
-      float slack_weight = 1e4;
-      switch (cost_func_type)
-      {
-      case 0:
-        cost = cost + slack_weight * df_slack.squaredNorm();
-        break;
-      case 1:
-        cost = cost + slack_weight * df_slack.lpNorm<1>();
-        break;
-      case 2:
-        cost = cost + slack_weight * df_slack.norm();
-        break;
-      }
-    }
+
+    cost = cost + 1e4 * df_slack.lpNorm<1>();
 
     return cost;
-  };
+  }
 
   void FillJacobianBlock(std::string var_set, Jacobian &jac) const override {
     if (var_set == "velocity"){
@@ -1128,38 +1044,19 @@ public:
     if (var_set == "df_slack"){
       VectorXd df_slack = GetVariables()->GetComponent("df_slack")->GetValues();
       std::vector<T> triplet_slack;
-      if (constraint_type == 0){
-        switch (cost_func_type)
-        {
-        case 0:
-          for (int i = 0; i < 4 * (n_step - 1); i++)
-          {
-            triplet_slack.push_back(T(0, i, 1e4 * 2 * df_slack(i)));
-          }
-          break;
-        case 1:
-          for (int i = 0; i < 4 * (n_step - 1); i++)
-          {
-            triplet_slack.push_back(T(0, i, 1e4));
-          }
-          break;
-        case 2:
-          for (int i = 0; i < 4 * (n_step - 1); i++)
-          {
-            triplet_slack.push_back(T(0, i, 1e4 * df_slack(i) / df_slack.norm()));
-          }
-          break;
-        }
-        jac.setFromTriplets(triplet_slack.begin(), triplet_slack.end());
+      
+      for (int i = 0; i < 4 * (n_step - 1); i++)
+      {
+        triplet_slack.push_back(T(0, i, 1e4));
       }
+      
+      jac.setFromTriplets(triplet_slack.begin(), triplet_slack.end());
     }
   }
 
 
 private:
-  int cost_func_type;
   int n_step;
-  int constraint_type;
 };
 
 } // namespace ifopt
