@@ -238,7 +238,6 @@ public:
   int n_exforce;                // number of external force
   int n_step;                   // number of steps or (knot points - 1)
   double t_step;                // length of each step
-  int constraint_type;          // constraint type
   std::vector<double> goal;     // goal
 
   ExConstraint(int n) : ExConstraint(n, "constraint1") {}
@@ -297,7 +296,6 @@ public:
     n_exforce = params["n_exforce"].as<int>();
     n_step = params["n_step"].as<int>();
     t_step = params["t_step"].as<double>();
-    constraint_type = params["constraint_type"].as<int>();
     goal = params["box_goal"].as<std::vector<double>>();
 
     front_normal << 1, 0, 0;

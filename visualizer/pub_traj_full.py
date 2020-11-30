@@ -30,7 +30,7 @@ with open(os.path.join(rospack.get_path('trajectory_my'),'logs','urtrajectory.tx
         line = line[:-2]
         t = [float(e) for e in line.split(",")]
         state.position = [t[1],t[2],t[3],t[4],t[5],t[6], t[7], t[8], t[9]]
-	state.velocity = [t[10],t[11],t[12],t[13],t[14],t[15], t[16], t[17], t[18]]
+	    state.velocity = [t[10],t[11],t[12],t[13],t[14],t[15], t[16], t[17], t[18]]
         state.header.stamp = rospy.Time.now()
 	pub.publish(state)
 	rospy.sleep(tstep)

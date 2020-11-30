@@ -192,7 +192,7 @@ target_link_libraries(ipopt_ur3
 target_compile_definitions(ipopt_ur3 PRIVATE ${PINOCCHIO_CFLAGS_OTHER})
 
 # SNOPT
-add_executable(snopt_ur3 src/ur3_box.cpp)
+add_executable(snopt_ur3 src/snopt_ur3.cpp)
 add_dependencies(snopt_ur3 ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 target_link_libraries(snopt_ur3
   ${Boost_LIBRARIES}

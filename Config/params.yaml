@@ -2,19 +2,9 @@
 robot_urdf: "/urdf/ur5_robot.urdf"
 box_urdf: "/urdf/box.urdf"
 
-# Parameters
-# n_dof: 4
-# n_step: 40
-# t_step: 0.05
-# n_control: 1
-# n_exforce: 1
-# box_goal: [0.65, 0]
-
 n_dof: 9
 n_step: 20
 t_step: 0.05
 n_control: 6
 n_exforce: 4
-constraint_type: 0 # 0 -> complementary, 1 -> state-trigger
 box_goal: [0.65, -0.1]
-cost_func_type: 1 # 0 -> SquaredNorm, 1 -> L1, 2 -> L2
